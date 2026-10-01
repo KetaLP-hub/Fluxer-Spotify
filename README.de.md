@@ -65,6 +65,7 @@ Normalerweise nicht nötig. Reihenfolge: **Kommandozeilen-Flags > Umgebungsvaria
 
 - `--template` / `STATUS_TEMPLATE`: Text des Status, z. B. `🎵 {title} – {artist}` (Standard). Platzhalter: `{title}`, `{artist}`, `{album}`. Maximal 128 Zeichen.
 - `--on-pause` / `ON_PAUSE`: `clear` (Standard, Status bei Pause löschen), `keep` (stehen lassen) oder `stats` (bei Pause nur die Statistik-Zeilen `top_artist` und `listening_today` rotieren lassen; ist keine davon aktiv, wird gelöscht). Wenn gar nichts läuft, wird der Status immer gelöscht.
+- `--lang` / `LANGUAGE`: Sprache aller Programmtexte: `auto` (Standard: folgt der Anzeigesprache des Betriebssystems; beginnt sie mit `de`, wird Deutsch genommen, sonst Englisch), `de` oder `en`. Beim ersten interaktiven Start wird einmal gefragt (Enter übernimmt die erkannte Sprache) und die Antwort gespeichert; wer die Option setzt, wird nicht gefragt. Sie betrifft Meldungen, Fehler, den Einrichtungsassistenten, `doctor`, Tipps, Hintergrund-Hinweise, die Standardtexte der Statuszeilen und die Webhook-Karte. Eigene `STATUS_TEMPLATE`- bzw. `STATUS_LINES`-Texte werden nie übersetzt. Unbekannte Werte brechen den Start mit einer Fehlermeldung ab. (Ein POSIX-`LANGUAGE=de_DE:en` in der echten Umgebung wird ignoriert; es zählt nur `auto`, `de` oder `en`.) Die versteckte Hintergrund-Kopie übernimmt die Einstellung.
 - `--lines` / `STATUS_LINES`: die rotierenden Statuszeilen in der gewünschten Reihenfolge (Standard `now,playlist,top_artist,listening_today`). Siehe unten.
 - `--rotate` / `ROTATE_SECONDS`: Sekunden pro Zeile (Standard 30, **Minimum 15**; kleinere Werte werden mit einer Warnung auf 15 gesetzt, damit Fluxer nicht zugespammt wird).
 - `--no-rotate` / `NO_ROTATE=1`: keine Rotation, es wird nur die erste Zeile gezeigt (wie vor dieser Funktion).
@@ -76,9 +77,11 @@ Während ein Titel läuft, wechselt der Status reihum zwischen diesen Zeilen:
 | Name | Beispiel | Quelle |
 |---|---|---|
 | `now` | `🎵 Titel – Artist` | aktueller Titel (Text über `--template`) |
-| `playlist` | `💿 aus "Playlist-Name"` | Playlist oder Album, aus dem gerade abgespielt wird |
+| `playlist` | `💿 aus "Playlist-Name"` | Playlist oder Album, aus dem gerade abgespielt wird (englisch: `💿 from "…"`) |
 | `top_artist` | `🏆 Top-Artist diese Woche: Muse` | deine Top-Artists (`short_term`, ca. 4 Wochen laut Spotify), höchstens stündlich neu geholt |
 | `listening_today` | `🎧 heute 1 h 30 min gehört` | aus „zuletzt gespielt“, höchstens alle 5 Minuten neu geholt |
+
+(Deutsche Texte gezeigt. Mit `LANGUAGE=en` lauten sie `💿 from "…"`, `🏆 Top artist this week: …` und `🎧 1 h 30 min listened today`. Ein Teil mit null entfällt: `🎧 heute 25 min gehört`, `🎧 heute 2 h gehört`.)
 
 - Zeilen ohne Daten werden übersprungen, nie mit leeren Platzhaltern angezeigt (z. B. `playlist` bei Podcasts, Liked Songs oder Künstler-Radio). Bleibt nur eine Zeile übrig, gibt es keine Rotation.
 - Bei einem Titelwechsel (und bei Play/Pause) beginnt die Rotation neu mit der `now`-Zeile. Es wird nur dann an Fluxer gesendet, wenn sich der Text wirklich ändert. Bei Fehlern oder Rate-Limits (Retry-After) pausiert das Programm nur die Status-Updates, es stürzt nicht ab.
@@ -97,6 +100,8 @@ ON_PAUSE=stats
 # STATUS_LINES=now|🔥 {top_artist} läuft bei mir|⏱ {hours} h {minutes} min heute
 # Rotation aus:
 # NO_ROTATE=1
+# Sprache: auto (Standard), de oder en
+LANGUAGE=de
 ```
 
 `doctor` zeigt die aktiven Zeilen und das Intervall an.

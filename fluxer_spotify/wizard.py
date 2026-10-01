@@ -1,12 +1,12 @@
 """First-run setup wizard: fills in whatever is missing, step by step, then returns so the loop can start.
 
-Order: Spotify Client ID -> Spotify login -> Fluxer login -> (once) autostart offer. Done steps are skipped;
+Order: language (only if never chosen) -> Spotify Client ID -> Spotify login -> Fluxer login -> (once) autostart offer. Done steps are skipped;
 an invalid/expired token re-triggers only its own step.
 """
 import re
 
 from . import autostart, background
-from .errors import AuthError, Fatal, LoginError, bi
+from .errors import LANGS, AuthError, Fatal, LoginError, bi, detect_lang, set_lang
 from .store import FLUXER_KEYS, SPOTIFY_KEYS
 
 DASHBOARD = "https://developer.spotify.com/dashboard"
@@ -21,6 +21,8 @@ def valid_client_id(s):
 def setup(ctx, tries=5, interactive=True):
     """Run all steps. Returns True when the program was handed over to a hidden background process (caller must exit).
     interactive=False (background mode) skips the closing offers; missing steps still fail via ctx.input. `ctx` is cli.Ctx (cfg, store, http, input, open_browser, spotify(), fluxer_login(), ...)."""
+    if interactive and not ctx.cfg.language:
+        _language(ctx)
     fresh = _client_id(ctx, tries)
     try:
         _spotify(ctx)
@@ -35,6 +37,22 @@ def setup(ctx, tries=5, interactive=True):
                  f"Tip: the status rotates every {n} s between track, playlist, top artist and listening time; change it with --lines / --rotate / --no-rotate (see README)."))
         ctx.store.update(rotation_noted=True)
     return interactive and _finish(ctx)
+
+
+LANG_NAMES = {"de": "Deutsch", "en": "English"}
+
+
+def _language(ctx):
+    """Step 0, only when no language is configured/stored: Enter accepts the detected one. Prompt is deliberately bilingual."""
+    guess = detect_lang()
+    other = "en" if guess == "de" else "de"
+    ans = _ask(ctx, f"\nSprache / Language: [Enter] = {LANG_NAMES[guess]}, {other[0]} = {LANG_NAMES[other]}: ").strip().lower()
+    chosen = other if ans in (other, other[0], LANG_NAMES[other].lower()) else guess
+    ctx.cfg.language = chosen
+    ctx.store.update(language=chosen)
+    set_lang(chosen)
+    print(bi(f"Sprache: {LANG_NAMES[chosen]} (aendern mit --lang oder LANGUAGE in .env).",
+             f"Language: {LANG_NAMES[chosen]} (change with --lang or LANGUAGE in .env)."))
 
 
 def _client_id(ctx, tries):
@@ -54,7 +72,7 @@ def _client_id(ctx, tries):
     except Exception:
         pass  # the URL is printed above anyway
     for _ in range(tries):
-        cid = _ask(ctx, "Client ID (leer = Abbruch / empty = cancel): ").strip().strip("\"'")
+        cid = _ask(ctx, bi("Client ID (leer = Abbruch): ", "Client ID (empty = cancel): ")).strip().strip("\"'")
         if not cid:
             raise Fatal(bi("Abgebrochen: ohne Client ID geht es nicht.", "Cancelled: a Client ID is required."))
         if valid_client_id(cid):
@@ -103,7 +121,7 @@ def _fluxer(ctx, tries):
             return
         except LoginError as e:
             print(f"\n{e}\n")
-        choice = _ask(ctx, "[Enter] nochmal versuchen / retry, t = Token einfuegen / paste token, q = Abbruch / quit: ").strip().lower()
+        choice = _ask(ctx, bi("[Enter] nochmal versuchen, t = Token einfuegen, q = Abbruch: ", "[Enter] retry, t = paste token, q = quit: ")).strip().lower()
         if choice == "q":
             raise Fatal(bi("Abgebrochen.", "Cancelled."))
         if choice == "t":
@@ -112,7 +130,8 @@ def _fluxer(ctx, tries):
     raise Fatal(bi("Fluxer-Login nicht moeglich.", "Fluxer login not possible."))
 
 
-NOTICE = bi(
+def notice():
+    return bi(
     "\nWICHTIG: Dieses Programm laeuft dauerhaft im Hintergrund und aktualisiert deinen Fluxer-Status, solange es laeuft.\n"
     "  - Beenden: \"Fluxer-Spotify.exe stop\" (oder im Task-Manager den Prozess \"Fluxer-Spotify.exe\" beenden).\n"
     "  - Komplett entfernen: \"Fluxer-Spotify.exe uninstall\" (Autostart, Login, gespeicherte Daten).\n"
@@ -129,7 +148,7 @@ def _finish(ctx):
     ask_bg = background.available() and not ctx.store.get("background_asked")
     if not (ask_auto or ask_bg):
         return False
-    print(NOTICE)
+    print(notice())
     if ask_auto:
         ans = _ask(ctx, bi("\nSoll das Programm automatisch (unsichtbar) mit Windows starten? (j/n): ",
                            "Start automatically (hidden) with Windows? (y/n): ")).strip().lower()

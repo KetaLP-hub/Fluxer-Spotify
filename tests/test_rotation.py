@@ -235,7 +235,7 @@ class Caches(Base):
         self.sp.routes["/me/player/recently-played"] = recent((self.clock.t - 30, 3))
         self.r.tick()
         self.assertEqual(self.sp.n("/me/player/recently-played"), 2)
-        self.assertEqual(self.fx.sent[-1], "🎧 heute 0 h 3 min gehört")
+        self.assertEqual(self.fx.sent[-1], "🎧 heute 3 min gehört")
 
 
 class Today(Base):
@@ -262,7 +262,7 @@ class Today(Base):
         self.make(lines=("listening_today",))
         self.sp.routes["/me/player/recently-played"] = recent((T0 - 60, 0))
         self.tick()
-        self.assertEqual(self.fx.sent, [None])  # nothing to show -> status cleared, no "0 h 0 min"
+        self.assertEqual(self.fx.sent, [None])  # nothing to show -> status cleared, no "0 min"
 
     def test_hours_and_minutes(self):
         self.make(lines=("listening_today",))

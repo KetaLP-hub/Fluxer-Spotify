@@ -51,7 +51,7 @@ class HiddenMode(Base):
         prompt = mock.Mock(side_effect=AssertionError("must not prompt"))
         with mock.patch.object(sys, "stdout", None), mock.patch.object(sys, "stderr", None), \
                 mock.patch.object(bg, "hide_console") as hide, mock.patch.object(bg, "notify_once") as note:
-            rc = cli.main(["run", "--background", "--data-dir", str(self.d)], http=make_http()[0],
+            rc = cli.main(["run", "--background", "--lang", "en", "--data-dir", str(self.d)], http=make_http()[0],
                           getpass_fn=prompt, input_fn=prompt)
             sys.stdout.close()
             sys.stderr.close()
@@ -212,7 +212,7 @@ class Stop(Base):
 
     def test_main_stop_with_nothing_running(self):
         with contextlib.redirect_stdout(io.StringIO()) as out:
-            self.assertEqual(cli.main(["stop", "--data-dir", str(self.d)]), 0)
+            self.assertEqual(cli.main(["stop", "--lang", "en", "--data-dir", str(self.d)]), 0)
         self.assertIn("No instance", out.getvalue())
 
 

@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from . import log as _log
+from .errors import bi, blog
 
 log = logging.getLogger("fluxer_spotify.store")
 SPOTIFY_KEYS = ("access", "exp", "refresh")
@@ -36,7 +37,7 @@ class Store:
             self.data = data
         except (ValueError, OSError) as e:
             bad = self.path.with_name(self.path.name + ".corrupt")
-            log.warning("%s unreadable (%s); moved to %s, starting empty", self.path.name, e, bad.name)
+            log.warning(blog("%s nicht lesbar (%s); verschoben nach %s, starte leer", "%s unreadable (%s); moved to %s, starting empty", self.path.name, e, bad.name))
             try:
                 os.replace(self.path, bad)
             except OSError:

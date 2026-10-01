@@ -10,7 +10,7 @@ import webbrowser
 
 from . import __version__, autostart, background, log as logmod
 from .config import load_config
-from .errors import AuthError, Fatal, bi
+from .errors import LANGS, AuthError, Fatal, bi, get_lang, set_lang, blog
 from .fluxer import FluxerClient, Webhook, login as fluxer_login_flow
 from .http import Http, HttpError, NetworkError
 from .runner import Runner
@@ -44,6 +44,7 @@ def build_parser():
     common.add_argument("--data-dir", default=S, help="where .env and state.json live (default: project folder, or %%APPDATA%%\\spotify-fluxer for the exe)")
     common.add_argument("--background", "--hidden", dest="background", action="store_true", default=S,
                         help="run without any window: hides the console, logs to fluxer-spotify.log, never prompts")
+    common.add_argument("--lang", dest="language", default=S, help="language of all messages: auto (default, from the OS), de or en (LANGUAGE in .env)")
     common.add_argument("--client-id", dest="client_id", default=S, help="Spotify Client ID")
     common.add_argument("--api", default=S, help="Fluxer API base URL (own instances only)")
     common.add_argument("--webhook", default=S, help="optional Fluxer webhook URL (channel card)")
@@ -84,15 +85,15 @@ def entry():
     """Console entry point. As a frozen exe the window would vanish on errors, so wait for Enter."""
     frozen = getattr(sys, "frozen", False)
     try:
-        rc = main()
+        rc = main(keep_lang=True)
     except Exception:
         import traceback
         traceback.print_exc()
-        log.exception("Absturz / crash")  # background mode has no console: the log file is the only trace
+        log.exception(bi("Absturz", "crash", " / "))  # background mode has no console: the log file is the only trace
         rc = 1
     if frozen and rc not in (0, 130) and not _background_requested():
         try:
-            input("\nDruecke Enter zum Schliessen. / Press Enter to close. ")
+            input("\n" + bi("Druecke Enter zum Schliessen.", "Press Enter to close.", " / ") + " ")
         except (EOFError, KeyboardInterrupt):
             pass
     return rc
@@ -102,13 +103,25 @@ def _background_requested():
     return any(a in ("--background", "--hidden") for a in sys.argv[1:])
 
 
-def main(argv=None, http=None, getpass_fn=getpass.getpass, input_fn=input):
+def main(argv=None, http=None, getpass_fn=getpass.getpass, input_fn=input, keep_lang=False):
+    """`keep_lang`: leave the selected language set on return (entry() still prints in it); otherwise restore the previous one."""
+    prev = get_lang()
+    try:
+        return _main(argv, http, getpass_fn, input_fn)
+    finally:
+        if not keep_lang:
+            set_lang(prev)
+
+
+def _main(argv, http, getpass_fn, input_fn):
     for stream in (sys.stdout, sys.stderr):  # emoji in logs must not crash legacy Windows consoles
         try:
             stream.reconfigure(errors="replace")
         except Exception:
             pass
     args = build_parser().parse_args(argv)
+    early = str(getattr(args, "language", "")).lower()
+    set_lang(early if early in LANGS else None)  # so even config errors use the language given on the command line
     command = args.command or "run"
     bg = bool(getattr(args, "background", False)) and command == "run"
     if bg:
@@ -129,6 +142,7 @@ def main(argv=None, http=None, getpass_fn=getpass.getpass, input_fn=input):
         if bg:  # ponytail: errors before this point (unwritable data dir) are not logged anywhere
             logmod.add_file(cfg.data_dir / background.LOG_NAME)
         ctx = Ctx(cfg, http or Http(), getpass_fn, input_fn, background=bg)
+        set_lang(cfg.lang)
         if bg:
             ctx.open_browser = _no_prompt
         return {"run": ctx.run, "login": ctx.spotify_login, "fluxer-login": lambda: ctx.fluxer_login(args),
@@ -137,13 +151,13 @@ def main(argv=None, http=None, getpass_fn=getpass.getpass, input_fn=input):
                 "uninstall-autostart": lambda: ctx.autostart(False), "stop": ctx.stop, "logs": ctx.logs,
                 "uninstall": ctx.uninstall}[command]() or 0
     except Fatal as e:
-        return fail(f"\n[FEHLER / ERROR]\n{e}\n")
+        return fail(f"\n{bi('[FEHLER]', '[ERROR]', ' / ')}\n{e}\n")
     except HttpError as e:
-        return fail(f"\n[FEHLER / ERROR] HTTP {e.status} {e.code or ''} ({e.url})\n")
+        return fail(f"\n{bi('[FEHLER]', '[ERROR]', ' / ')} HTTP {e.status} {e.code or ''} ({e.url})\n")
     except NetworkError as e:
         return fail(bi(f"\n[FEHLER] Keine Verbindung: {e}\n", f"[ERROR] Network problem: {e}\n"))
     except KeyboardInterrupt:
-        print("\nAbgebrochen. / Cancelled.", file=sys.stderr)
+        print("\n" + bi("Abgebrochen.", "Cancelled.", " / "), file=sys.stderr)
         return 130
 
 
@@ -154,6 +168,8 @@ class Ctx:
         self.store = Store(cfg.state_file)
         if not cfg.client_id:  # precedence: flags > env > .env > stored by the wizard
             cfg.client_id = self.store.get("client_id", "")
+        if not cfg.language and self.store.get("language") in LANGS:
+            cfg.language = self.store.get("language")
 
     # --- builders
     def spotify(self):
@@ -169,17 +185,18 @@ class Ctx:
     # --- commands
     def spotify_login(self):
         self.spotify().login()
-        print("Spotify-Login ok. / Spotify login ok.")
+        print(bi("Spotify-Login ok.", "Spotify login ok."))
 
     def fluxer_login(self, args):
         print(bi("Fluxer-Login. Dein Passwort wird nur einmal an die Fluxer-API gesendet und nicht gespeichert.",
                  "Fluxer login. Your password is sent once to the Fluxer API only and is not stored."))
         email = (getattr(args, "email", None) or self.input("E-Mail: ")).strip()
-        password = self.getpass("Passwort / Password (Eingabe unsichtbar / hidden): ")
+        password = self.getpass(bi("Passwort (Eingabe unsichtbar): ", "Password (input hidden): "))
         logmod.add_secret(password)
 
         def ask_code(attempt):
-            return self.getpass("2FA-Code (Authenticator oder Backup-Code, leer = Abbruch / empty = cancel): ").strip()
+            return self.getpass(bi("2FA-Code (Authenticator oder Backup-Code, leer = Abbruch): ",
+                                           "2FA code (authenticator or backup code, empty = cancel): ")).strip()
 
         try:
             res = fluxer_login_flow(self.http, self.cfg.api, email, password, ask_code, notify=print)
@@ -211,13 +228,13 @@ class Ctx:
                 fx.set_status(None)
                 print(bi("Fluxer-Status geloescht.", "Fluxer status cleared."))
             except (Fatal, HttpError, NetworkError) as e:
-                log.warning("Status konnte nicht geloescht werden / could not clear status: %s", e)
+                log.warning(blog("Status konnte nicht geloescht werden: %s", "Could not clear status: %s", e))
             if fx.source == "login" and not self.cfg.fluxer_token:
                 try:
                     fx.logout()
                     print(bi("Fluxer-Sitzung beendet.", "Fluxer session revoked."))
                 except (Fatal, HttpError, NetworkError) as e:
-                    log.warning("Sitzung konnte nicht beendet werden / could not revoke session: %s", e)
+                    log.warning(blog("Sitzung konnte nicht beendet werden: %s", "Could not revoke session: %s", e))
         self.store.clear(FLUXER_KEYS + (() if args.keep_spotify else SPOTIFY_KEYS))
         print(bi("Gespeicherte Tokens geloescht.", "Stored tokens deleted."))
         if self.cfg.fluxer_token:
@@ -227,46 +244,57 @@ class Ctx:
     def doctor(self):
         problems = []
 
-        def line(ok, de, en=None):
-            print(f"  [{'OK' if ok is True else 'INFO' if ok is None else '!!'}] {de}" + (f"\n         {en}" if en else ""))
+        def line(ok, de, en):
+            text = bi(de, en, "\n         ")
+            print(f"  [{'OK' if ok is True else 'INFO' if ok is None else '!!'}] {text}")
             if ok is False:
-                problems.append(de)
+                problems.append(text)
 
-        print(f"spotify-fluxer {__version__}  (Daten / data: {self.cfg.data_dir})")
-        line(bool(self.cfg.client_id), "Spotify Client ID gesetzt" if self.cfg.client_id else "Spotify Client ID fehlt (beim Start ohne Zusatz wird sie abgefragt) / missing (asked on a plain start)")
+        fix = lambda cmd: bi(f"Loesung: python spotify_status.py {cmd}", f"Fix: python spotify_status.py {cmd}", " / ")
+        print(bi(f"spotify-fluxer {__version__}  (Daten: {self.cfg.data_dir})", f"spotify-fluxer {__version__}  (data: {self.cfg.data_dir})", " / "))
+        line(None, f"Sprache: {self.cfg.lang} (Einstellung: {self.cfg.language or 'auto'})",
+             f"Language: {self.cfg.lang} (setting: {self.cfg.language or 'auto'})")
+        line(bool(self.cfg.client_id),
+             "Spotify Client ID gesetzt" if self.cfg.client_id else "Spotify Client ID fehlt (beim Start ohne Zusatz wird sie abgefragt)",
+             "Spotify Client ID set" if self.cfg.client_id else "Spotify Client ID missing (asked on a plain start)")
         if self.store.get("refresh") and self.cfg.client_id:
             try:
                 sp = self.spotify()
                 sp.refresh()  # live check; works for expired access tokens too
-                line(True, "Spotify-Login funktioniert")
+                line(True, "Spotify-Login funktioniert", "Spotify login works")
             except AuthError as e:
-                line(False, str(e).split("\n")[0], "Loesung / fix: python spotify_status.py login")
+                line(False, str(e).split("\n")[0], fix("login"))
             except (HttpError, NetworkError) as e:
-                line(False, f"Spotify nicht erreichbar / unreachable: {e}")
+                line(False, f"Spotify nicht erreichbar: {e}", f"Spotify unreachable: {e}")
         else:
-            line(False, "Nicht bei Spotify angemeldet", "Loesung / fix: python spotify_status.py login")
+            line(False, "Nicht bei Spotify angemeldet", "Not logged in to Spotify")
+            print("         " + fix("login"))
         fx = self.fluxer()
         if fx:
             try:
                 me = fx.me()
                 where = "env/.env" if fx.source == "manual" and self.cfg.fluxer_token else fx.source
-                line(True, f"Fluxer-Token gueltig: {me.get('username', '?')} (Quelle / source: {where})")
+                line(True, f"Fluxer-Token gueltig: {me.get('username', '?')} (Quelle: {where})",
+                     f"Fluxer token valid: {me.get('username', '?')} (source: {where})")
             except AuthError as e:
-                line(False, str(e).split("\n")[0], "Loesung / fix: python spotify_status.py fluxer-login")
+                line(False, str(e).split("\n")[0], fix("fluxer-login"))
             except (HttpError, NetworkError) as e:
-                line(False, f"Fluxer nicht erreichbar / unreachable: {e}")
+                line(False, f"Fluxer nicht erreichbar: {e}", f"Fluxer unreachable: {e}")
         else:
             line(None if self.cfg.webhook else False, "Kein Fluxer-Token" + (" (nur Webhook-Betrieb)" if self.cfg.webhook else ""),
-                 "Loesung / fix: python spotify_status.py fluxer-login")
-        line(None, f"Webhook: {'konfiguriert / configured' if self.cfg.webhook else 'nicht gesetzt / not set'}; "
-                   f"Template: {self.cfg.template}; Pause: {self.cfg.on_pause}")
-        line(None, f"Status-Zeilen / lines: {', '.join(self.cfg.lines)}; "
-                   + ("keine Rotation / no rotation" if self.cfg.no_rotate else f"Rotation alle / every {self.cfg.rotate:g} s"))
+                 "No Fluxer token" + (" (webhook-only operation)" if self.cfg.webhook else ""))
+            if not self.cfg.webhook:
+                print("         " + fix("fluxer-login"))
+        line(None, f"Webhook: {'konfiguriert' if self.cfg.webhook else 'nicht gesetzt'}; Template: {self.cfg.template}; Pause: {self.cfg.on_pause}",
+             f"Webhook: {'configured' if self.cfg.webhook else 'not set'}; template: {self.cfg.template}; pause: {self.cfg.on_pause}")
+        line(None, f"Status-Zeilen: {', '.join(self.cfg.lines)}; " + ("keine Rotation" if self.cfg.no_rotate else f"Rotation alle {self.cfg.rotate:g} s"),
+             f"Status lines: {', '.join(self.cfg.lines)}; " + ("no rotation" if self.cfg.no_rotate else f"rotation every {self.cfg.rotate:g} s"))
         pid = background.running_pid(self.cfg.data_dir)
         line(None, f"Hintergrund-Instanz laeuft (PID {pid}); beenden: stop" if pid else "Keine Instanz laeuft",
              f"Background instance running (PID {pid}); stop it with: stop" if pid else "No instance is running")
-        line(None, f"Log: {self.cfg.data_dir / background.LOG_NAME}")
-        print("\n" + ("Alles in Ordnung. / All good." if not problems else f"{len(problems)} Problem(e). / problem(s)."))
+        log_path = self.cfg.data_dir / background.LOG_NAME
+        line(None, f"Log: {log_path}", f"Log: {log_path}")
+        print("\n" + (bi("Alles in Ordnung.", "All good.") if not problems else bi(f"{len(problems)} Problem(e).", f"{len(problems)} problem(s).")))
         return 1 if problems else 0
 
     def autostart(self, install):
@@ -283,7 +311,7 @@ class Ctx:
             self._lock = background.InstanceLock(self.cfg.data_dir).acquire()
         except background.AlreadyRunning as e:
             if self.background:
-                log.info("Zweiter Start ignoriert / second start ignored: %s", str(e).splitlines()[0])
+                log.info(blog("Zweiter Start ignoriert: %s", "Second start ignored: %s", str(e).splitlines()[0]))
                 return 0
             raise
         try:
@@ -310,7 +338,7 @@ class Ctx:
             except (HttpError, NetworkError) as e:
                 if not self.background or attempt == 9:
                     raise
-                log.warning("Netzwerk noch nicht bereit / network not ready: %s (retry in 30s)", e)
+                log.warning(blog("Netzwerk noch nicht bereit: %s (neuer Versuch in 30 s)", "Network not ready: %s (retry in 30 s)", e))
                 sleep(30)
 
     def _run(self):
@@ -331,13 +359,14 @@ class Ctx:
                 signal.signal(getattr(signal, name), _sigterm)
         if self.background:
             background.clear_attention(self.cfg.data_dir)
-        log.info("Laeuft%s. Strg+C bzw. 'stop' beendet und loescht den Status. / Running%s. Ctrl+C or 'stop' ends it and clears the status.",
-                 " im Hintergrund" if self.background else "", " in the background" if self.background else "")
+        where = (bi(" im Hintergrund", " in the background"),) if self.background else ("",)
+        log.info(blog("Laeuft%s. Strg+C bzw. 'stop' beendet und loescht den Status.",
+                     "Running%s. Ctrl+C or 'stop' ends it and clears the status.", *where))
         try:
             runner.run(sleep=background.make_stop_sleep(self.cfg.data_dir, stop_exc=Stop))
         except (KeyboardInterrupt, Stop):
-            print("\nBeendet. / Stopped.")
-            log.info("Beendet. / Stopped.")
+            print("\n" + bi("Beendet.", "Stopped.", " / "))
+            log.info(bi("Beendet.", "Stopped.", " / "))
         finally:
             runner.shutdown()
         return 0
@@ -348,11 +377,11 @@ class Ctx:
             self._lock.release()
         cfg = self.cfg
         extra = ["--template", cfg.template, "--on-pause", cfg.on_pause, "--interval", str(cfg.interval), "--api", cfg.api,
-                 "--lines", "|".join(cfg.lines), "--rotate", str(cfg.rotate)] + (["--no-rotate"] if cfg.no_rotate else [])
+                 "--lines", "|".join(cfg.lines), "--rotate", str(cfg.rotate), "--lang", cfg.lang] + (["--no-rotate"] if cfg.no_rotate else [])
         try:
             pid = background.spawn_background(cfg.data_dir, extra)
         except OSError as e:
-            log.warning("Start im Hintergrund fehlgeschlagen / background start failed: %s", e)
+            log.warning(blog("Start im Hintergrund fehlgeschlagen: %s", "Background start failed: %s", e))
             pid = None
         where = cfg.data_dir / background.LOG_NAME
         if pid:
@@ -385,7 +414,7 @@ class Ctx:
                     fx.set_status(None)
                     print(bi("Fluxer-Status geloescht.", "Fluxer status cleared."))
                 except (Fatal, HttpError, NetworkError) as e:
-                    log.warning("Status konnte nicht geloescht werden / could not clear status: %s", e)
+                    log.warning(blog("Status konnte nicht geloescht werden: %s", "Could not clear status: %s", e))
 
     def logs(self):
         lines = background.tail(self.cfg.data_dir / background.LOG_NAME, 50)

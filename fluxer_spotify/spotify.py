@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from .config import DEFAULT_TEMPLATE
-from .errors import AuthError, Fatal, bi
+from .errors import AuthError, Fatal, bi, tr, blog
 from .http import HttpError
 
 log = logging.getLogger("fluxer_spotify.spotify")
@@ -60,7 +60,7 @@ def status_text(item, template):
     try:
         text = template.format_map(fields)
     except (KeyError, IndexError, ValueError) as e:
-        log.warning("Bad STATUS_TEMPLATE (%s); using the default. Allowed: {title} {artist} {album}", e)
+        log.warning(blog("Ungueltiges STATUS_TEMPLATE (%s); nehme den Standard. Erlaubt: {title} {artist} {album}", "Bad STATUS_TEMPLATE (%s); using the default. Allowed: {title} {artist} {album}", e))
         text = DEFAULT_TEMPLATE.format_map(fields)
     return truncate(" ".join(text.split())) or None
 
@@ -114,7 +114,7 @@ class SpotifyClient:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
                 self.end_headers()
-                self.wfile.write("Fertig, Fenster kann zu. / Done, you can close this window.".encode())
+                self.wfile.write(bi("Fertig, Fenster kann zu.", "Done, you can close this window.", " / ").encode())
 
             log_message = lambda *a: None
 
@@ -123,7 +123,7 @@ class SpotifyClient:
         url = "https://accounts.spotify.com/authorize?" + urllib.parse.urlencode({
             "client_id": self.client_id, "response_type": "code", "redirect_uri": REDIRECT, "scope": SCOPES,
             "code_challenge_method": "S256", "code_challenge": chal, "state": state})
-        notify(f"Browser oeffnet sich... / Opening browser... (Redirect URI: {REDIRECT})")
+        notify(bi(f"Browser oeffnet sich... (Redirect URI: {REDIRECT})", f"Opening browser... (Redirect URI: {REDIRECT})", " / "))
         open_browser(url)
         deadline = time.monotonic() + timeout
         try:
@@ -150,7 +150,7 @@ class SpotifyClient:
                                          retries=retries)
             except HttpError as e:
                 if e.status == 401 and attempt == 0:
-                    log.info("Spotify 401: refreshing the access token")
+                    log.info(bi("Spotify 401: Access-Token wird erneuert", "Spotify 401: refreshing the access token", " / "))
                     self.refresh()
                     continue
                 if e.status == 401:
@@ -164,7 +164,7 @@ class SpotifyClient:
         it = pb.get("item") if pb else None
         if not it:
             return Snapshot("idle", False, None,
-                            {"title": "Spotify", "description": "Gerade nichts am Laufen", "color": 0x535353})
+                            {"title": "Spotify", "description": tr("Gerade nichts am Laufen", "Nothing playing right now"), "color": 0x535353})
         playing = bool(pb.get("is_playing"))
         dev = pb.get("device", {})
         key = (it["id"], playing, dev.get("name"), pb.get("shuffle_state"), pb.get("repeat_state"))
@@ -195,10 +195,10 @@ class SpotifyClient:
                            f"{bar(pb['progress_ms'], it['duration_ms'])} {mmss(pb['progress_ms'])}/{mmss(it['duration_ms'])}",
             "color": 0x1DB954 if playing else 0x535353,
             "fields": [
-                {"name": "⏭ Als Nächstes", "value": s["next"], "inline": True},
-                {"name": "🕘 Zuletzt", "value": lines(s["recent"]), "inline": True},
-                {"name": "🏆 Top Artists (4 Wo.)", "value": lines(s["ta"]), "inline": True},
-                {"name": "🔥 Top Tracks (4 Wo.)", "value": lines(s["tt"]), "inline": True},
+                {"name": tr("⏭ Als Nächstes", "⏭ Up next"), "value": s["next"], "inline": True},
+                {"name": tr("🕘 Zuletzt", "🕘 Recently"), "value": lines(s["recent"]), "inline": True},
+                {"name": tr("🏆 Top Artists (4 Wo.)", "🏆 Top artists (4 wks)"), "value": lines(s["ta"]), "inline": True},
+                {"name": tr("🔥 Top Tracks (4 Wo.)", "🔥 Top tracks (4 wks)"), "value": lines(s["tt"]), "inline": True},
             ],
             "footer": {"text": " · ".join(foot)},
         }

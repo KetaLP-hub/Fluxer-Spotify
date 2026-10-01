@@ -7,16 +7,26 @@ with an empty gap. Spotify is only asked for what the active lines need.
 import logging
 from datetime import datetime
 
+from .errors import bi, tr, blog
 from .http import HttpError, NetworkError
 from .spotify import status_text, truncate, who
 
 log = logging.getLogger("fluxer_spotify.lines")
 STATS = ("top_artist", "listening_today")  # lines that do not depend on the current track
-TEMPLATES = {
-    "playlist": '💿 aus "{playlist}"',
-    "top_artist": "🏆 Top-Artist diese Woche: {top_artist}",
-    "listening_today": "🎧 heute {hours} h {minutes} min gehört",
-}
+
+
+def default_template(name, hours=0, minutes=0):
+    """Default text of a built-in line in the selected language; 'listening_today' drops a zero part ("25 min", "2 h")."""
+    if name == "playlist":
+        return tr('💿 aus "{playlist}"', '💿 from "{playlist}"')
+    if name == "top_artist":
+        return tr("🏆 Top-Artist diese Woche: {top_artist}", "🏆 Top artist this week: {top_artist}")
+    if name == "listening_today":
+        part = " ".join(p for p in (f"{hours} h" if hours else "", f"{minutes} min" if minutes else "") if p)
+        return tr(f"🎧 heute {part} gehört", f"🎧 {part} listened today")
+    return name
+
+
 TTL_NAME, TTL_TOP, TTL_TODAY = 3600, 3600, 300  # seconds
 ERR_TTL = (30, 3600)  # clamp for "try again later" after a failed lookup (Retry-After wins inside this range)
 
@@ -81,7 +91,7 @@ class Lines:
             except (AttributeError, TypeError, ValueError):
                 wait = 120
             wait = min(ERR_TTL[1], max(ERR_TTL[0], wait))
-            log.info("Lookup %s failed (%s), retry in %.0fs", key[0], e, wait)
+            log.info(blog("Abfrage %s fehlgeschlagen (%s), neuer Versuch in %.0f s", "Lookup %s failed (%s), retry in %.0fs", key[0], e, wait))
             val, ttl = None, wait
         self.cache[key] = (val, now + ttl)
         return val
@@ -134,10 +144,16 @@ class Lines:
             "playlist": lambda: self._playlist(snap), "top_artist": self._top_artist,
             "hours": today(0), "minutes": today(1)})
         try:
-            text = TEMPLATES.get(name, name).format_map(fields)
+            tpl = name
+            if name == "listening_today":
+                h, m = self._today() or (None, None)
+                tpl = default_template(name, h, m) if h is not None else None  # no data: unavailable
+            elif name in ("playlist", "top_artist"):
+                tpl = default_template(name)
+            text = tpl.format_map(fields) if tpl else None
         except (KeyError, IndexError, ValueError):
             return None
-        return truncate(" ".join(text.split())) or None
+        return truncate(" ".join(text.split())) if text else None
 
     def available(self, snap, names, first_only=False):
         """[(name, text)] for the lines that have data; stops at the first one if `first_only` (no API calls for the rest)."""

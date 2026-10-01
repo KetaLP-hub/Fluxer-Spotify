@@ -2,7 +2,7 @@
 import logging
 import time
 
-from .errors import AuthError, bi
+from .errors import AuthError, bi, blog
 from .http import HttpError, NetworkError
 from .lines import STATS, Lines
 from .spotify import status_text
@@ -64,7 +64,7 @@ class Runner:
             self.webhook.push(snap.embed)
             self.last_push = self.clock()
         if changed:
-            log.info("Now: %s", self.describe(snap))
+            log.info(blog("Jetzt: %s", "Now: %s", self.describe(snap)))
         self.last_key = snap.key
 
     @staticmethod
@@ -82,11 +82,11 @@ class Runner:
             self.status_failures += 1
             wait = retry_wait(e, self.status_failures)
             self.hold_until = now + wait
-            log.warning("Status konnte nicht gesetzt werden / could not set status: %s (again in %.0fs)", e, wait)
+            log.warning(blog("Status konnte nicht gesetzt werden: %s (neuer Versuch in %.0f s)", "Could not set status: %s (again in %.0fs)", e, wait))
         except AuthError as e:
             if not self.webhook:
                 raise
-            log.error("%s\n-> Profil-Status deaktiviert, Webhook laeuft weiter. / Profile status disabled, webhook keeps running.", e)
+            log.error("%s\n-> " + bi("Profil-Status deaktiviert, Webhook laeuft weiter.", "Profile status disabled, webhook keeps running.", " / "), e)
             self.fluxer = None
 
     def run(self, sleep=time.sleep):
@@ -99,7 +99,7 @@ class Runner:
             except (HttpError, NetworkError) as e:
                 self.failures += 1
                 wait = min(120, 10 * 2 ** (self.failures - 1))
-                log.warning("Fehler / error: %s (again in %ss)", e, wait)
+                log.warning(blog("Fehler: %s (neuer Versuch in %s s)", "Error: %s (again in %ss)", e, wait))
                 sleep(wait)
 
     def shutdown(self):
@@ -107,6 +107,6 @@ class Runner:
         if self.fluxer:
             try:
                 self.fluxer.set_status(None)
-                log.info("Status geloescht. / Status cleared.")
+                log.info(bi("Status geloescht.", "Status cleared.", " / "))
             except Exception as e:  # never block shutdown
-                log.warning("Konnte Status nicht loeschen / could not clear status: %s", e)
+                log.warning(blog("Konnte Status nicht loeschen: %s", "Could not clear status: %s", e))

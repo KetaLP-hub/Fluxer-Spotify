@@ -10,7 +10,7 @@ from unittest import mock
 
 from fluxer_spotify import autostart, background, cli, config, wizard
 from fluxer_spotify.config import Config, load_config
-from fluxer_spotify.errors import AuthError, Fatal
+from fluxer_spotify.errors import AuthError, Fatal, set_lang
 from tests.helpers import make_http
 
 CID = "0123456789abcdef0123456789ABCDEF"
@@ -38,6 +38,7 @@ class WizardCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        self.addCleanup(set_lang, None)  # the language step sets the process-wide language
         self.d = Path(self.tmp.name)
         for mod in (autostart, background):
             p = mock.patch.object(mod, "available", return_value=False)
@@ -47,6 +48,7 @@ class WizardCase(unittest.TestCase):
     def ctx(self, inputs=(), secrets=(), http=None, sp=None, **cfg):
         """Scripted input()/getpass(): running out of answers raises StopIteration = an unexpected prompt."""
         self.opened = []
+        cfg.setdefault("language", "auto")  # configured: the language step is tested separately (test_language.py)
         inputs, secrets = iter(inputs), iter(secrets)
         http = http or make_http()[0]
         c = cli.Ctx(Config(data_dir=self.d, **cfg), http, lambda p="": next(secrets), lambda p="": next(inputs),

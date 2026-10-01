@@ -65,6 +65,7 @@ Normally not needed. Order of precedence: **command-line flags > environment var
 
 - `--template` / `STATUS_TEMPLATE`: text of the status, e.g. `🎵 {title} – {artist}` (default). Placeholders: `{title}`, `{artist}`, `{album}`. Maximum 128 characters.
 - `--on-pause` / `ON_PAUSE`: `clear` (default, clear the status on pause), `keep` (leave it) or `stats` (on pause, only rotate the statistics lines `top_artist` and `listening_today`; if neither is active, the status is cleared). If nothing is playing at all, the status is always cleared.
+- `--lang` / `LANGUAGE`: language of all program texts: `auto` (default: follows the OS display language; German if it starts with `de`, otherwise English), `de` or `en`. The first interactive start asks once (Enter accepts the detected language) and stores the answer; set it explicitly to skip the question. It affects messages, errors, the setup wizard, `doctor`, tips, background notices, the default texts of the status lines and the webhook card. Your own `STATUS_TEMPLATE` / custom `STATUS_LINES` are never translated. Unknown values stop the program at startup. (A POSIX `LANGUAGE=de_DE:en` in the real environment is ignored; it is only used if it is `auto`, `de` or `en`.) The hidden background copy inherits the setting.
 - `--lines` / `STATUS_LINES`: the rotating status lines in the desired order (default `now,playlist,top_artist,listening_today`). See below.
 - `--rotate` / `ROTATE_SECONDS`: seconds per line (default 30, **minimum 15**; smaller values are set to 15 with a warning so Fluxer is not spammed).
 - `--no-rotate` / `NO_ROTATE=1`: no rotation, only the first line is shown (as before this feature).
@@ -78,11 +79,11 @@ While a track is playing, the status cycles through these lines:
 | Name | Example | Source |
 |---|---|---|
 | `now` | `🎵 Title – Artist` | current track (text via `--template`) |
-| `playlist` | `💿 aus "Playlist name"` | playlist or album currently playing from |
-| `top_artist` | `🏆 Top-Artist diese Woche: Muse` | your top artists (`short_term`, about 4 weeks according to Spotify), fetched at most hourly |
-| `listening_today` | `🎧 heute 1 h 30 min gehört` | from "recently played", fetched at most every 5 minutes |
+| `playlist` | `💿 from "Playlist name"` | playlist or album currently playing from |
+| `top_artist` | `🏆 Top artist this week: Muse` | your top artists (`short_term`, about 4 weeks according to Spotify), fetched at most hourly |
+| `listening_today` | `🎧 1 h 30 min listened today` | from "recently played", fetched at most every 5 minutes |
 
-(The example texts are the literal German strings the program produces.)
+(English texts shown. With `LANGUAGE=de` they read `💿 aus "…"`, `🏆 Top-Artist diese Woche: …` and `🎧 heute 1 h 30 min gehört`. A zero part is dropped: `🎧 25 min listened today`, `🎧 2 h listened today`.)
 
 - Lines without data are skipped, never shown with empty placeholders (e.g. `playlist` for podcasts, Liked Songs or artist radio). If only one line is left, there is no rotation.
 - On a track change (and on play/pause) the rotation restarts with the `now` line. Something is only sent to Fluxer when the text actually changes. On errors or rate limits (Retry-After) the program only pauses status updates; it does not crash.
@@ -101,6 +102,8 @@ ON_PAUSE=stats
 # STATUS_LINES=now|🔥 {top_artist} läuft bei mir|⏱ {hours} h {minutes} min heute
 # rotation off:
 # NO_ROTATE=1
+# language: auto (default), de or en
+LANGUAGE=en
 ```
 
 `doctor` shows the active lines and the interval.

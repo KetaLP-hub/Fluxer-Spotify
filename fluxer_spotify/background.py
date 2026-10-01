@@ -51,7 +51,7 @@ def hide_console(frozen=None):
         frozen = getattr(sys, "frozen", False)
     buf = (ctypes.c_uint * 8)()
     if k32.GetConsoleProcessList(buf, 8) > (2 if frozen else 1):
-        log.warning("Konsole wird mit einem Terminal geteilt, nicht versteckt. / Console shared with a terminal, not hidden.")
+        log.warning(bi("Konsole wird mit einem Terminal geteilt, nicht versteckt.", "Console shared with a terminal, not hidden.", " / "))
         return False
     ctypes.windll.user32.ShowWindow(hwnd, SW_HIDE)
     return True

@@ -14,7 +14,7 @@ import json
 import logging
 import time
 
-from .errors import AuthError, LoginError, bi
+from .errors import AuthError, LoginError, bi, blog
 from .http import HttpError
 
 log = logging.getLogger("fluxer_spotify.fluxer")
@@ -103,7 +103,7 @@ def _post(http, api, path, body, headers=None, max_solves=2):
             return http.request("POST", api + path, json_body=body, headers=headers, retries=0)
         except HttpError as e:
             if e.status == 400 and e.code in CAPTCHA_CODES and solves < max_solves:
-                log.info("Loese Captcha / solving captcha ...")
+                log.info(bi("Loese Captcha ...", "Solving captcha ...", " / "))
                 headers["X-Captcha-Token"], headers["X-Captcha-Type"] = solve_altcha(_read_challenge(e)), "altcha"
                 continue
             raise
@@ -225,6 +225,6 @@ class Webhook:
             try:
                 return self.http.request("PATCH", f"{self.url}/messages/{self.store.get('msg')}", json_body=body)
             except HttpError as e:
-                log.warning("Webhook edit failed (HTTP %s), posting a new message", e.status)
+                log.warning(blog("Webhook-Bearbeitung fehlgeschlagen (HTTP %s), sende neue Nachricht", "Webhook edit failed (HTTP %s), posting a new message", e.status))
         r = self.http.request("POST", self.url + "?wait=true", json_body=body)
         self.store.update(msg=r.get("id"))

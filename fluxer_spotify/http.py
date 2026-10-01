@@ -8,6 +8,8 @@ import urllib.parse
 import urllib.request
 from typing import NamedTuple
 
+from .errors import bi, blog
+
 log = logging.getLogger("fluxer_spotify.http")
 MAX_WAIT = 120.0
 
@@ -97,7 +99,7 @@ class Http:
                 if attempt >= tries:
                     raise
                 delay = self.retry_delay(None, attempt, self.rand)
-                log.warning("%s %s: network error (%s), retry in %.0fs", method, _loc(url), e, delay)
+                log.warning(blog("%s %s: Netzwerkfehler (%s), neuer Versuch in %.0f s", "%s %s: network error (%s), retry in %.0fs", method, _loc(url), e, delay))
                 self.sleep(delay)
                 continue
             log.debug("%s %s -> %s", method, _loc(url), resp.status)
@@ -109,7 +111,7 @@ class Http:
                 body = resp.body[:200].decode("utf-8", "replace")
             if (resp.status == 429 or resp.status >= 500) and attempt < tries:
                 delay = self.retry_delay(resp, attempt, self.rand)
-                log.warning("%s %s: HTTP %s, retry in %.0fs", method, _loc(url), resp.status, delay)
+                log.warning(blog("%s %s: HTTP %s, neuer Versuch in %.0f s", "%s %s: HTTP %s, retry in %.0fs", method, _loc(url), resp.status, delay))
                 self.sleep(delay)
                 continue
             raise HttpError(resp.status, body, resp.headers, _loc(url))

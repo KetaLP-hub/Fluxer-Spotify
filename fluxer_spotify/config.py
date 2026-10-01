@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import log
-from .errors import Fatal, bi
+from .errors import LANGS, Fatal, bi, detect_lang, blog
 
 DEFAULT_API = "https://api.fluxer.app/v1"
 DEFAULT_TEMPLATE = "🎵 {title} – {artist}"
@@ -21,8 +21,9 @@ _log = logging.getLogger("fluxer_spotify.config")
 ENV_KEYS = {  # attribute -> environment variable
     "client_id": "SPOTIFY_CLIENT_ID", "fluxer_token": "FLUXER_TOKEN", "webhook": "FLUXER_WEBHOOK",
     "api": "FLUXER_API", "template": "STATUS_TEMPLATE", "on_pause": "ON_PAUSE", "interval": "POLL_INTERVAL",
-    "lines": "STATUS_LINES", "rotate": "ROTATE_SECONDS", "no_rotate": "NO_ROTATE",
+    "lines": "STATUS_LINES", "rotate": "ROTATE_SECONDS", "no_rotate": "NO_ROTATE", "language": "LANGUAGE",
 }
+LANG_CHOICES = ("auto",) + LANGS
 
 
 @dataclass
@@ -38,6 +39,12 @@ class Config:
     lines: tuple = DEFAULT_LINES  # names from LINE_NAMES or custom templates, in rotation order
     rotate: float = 30.0
     no_rotate: bool = False
+    language: str = ""  # "" = not configured anywhere yet, else "auto" / "de" / "en"
+
+    @property
+    def lang(self):
+        """Concrete language: the configured one, or the OS UI language for "auto" / not configured."""
+        return self.language if self.language in LANGS else detect_lang()
 
     @property
     def state_file(self):
@@ -103,7 +110,10 @@ def load_config(args=None, environ=None):
     for attr, var in ENV_KEYS.items():
         val = get(attr)
         if val in (None, ""):
-            val = environ.get(var) or dotenv.get(var)
+            val = environ.get(var)
+            if attr == "language" and str(val).strip().lower() not in LANG_CHOICES:
+                val = None  # POSIX uses LANGUAGE=de_DE:en for something else; only a real value counts from the environment
+            val = val or dotenv.get(var)
         if val not in (None, ""):
             setattr(cfg, attr, val)
     cfg.api = cfg.api.rstrip("/")
@@ -116,6 +126,10 @@ def load_config(args=None, environ=None):
     cfg.interval = max(2.0, cfg.interval)  # be nice to the Spotify API
     if cfg.on_pause not in ON_PAUSE_MODES:
         raise Fatal(bi("ON_PAUSE muss 'clear', 'keep' oder 'stats' sein.", "ON_PAUSE must be 'clear', 'keep' or 'stats'."))
+    cfg.language = str(cfg.language).strip().lower()
+    if cfg.language and cfg.language not in LANG_CHOICES:
+        raise Fatal(bi(f"LANGUAGE/--lang muss 'auto', 'de' oder 'en' sein (nicht '{cfg.language}').",
+                       f"LANGUAGE/--lang must be 'auto', 'de' or 'en' (not '{cfg.language}')."))
     cfg.lines = parse_lines(cfg.lines)
     cfg.no_rotate = str(cfg.no_rotate).strip().lower() in ("1", "true", "yes", "on", "j", "ja")
     try:
@@ -123,7 +137,8 @@ def load_config(args=None, environ=None):
     except ValueError:
         raise Fatal(bi("ROTATE_SECONDS muss eine Zahl sein.", "ROTATE_SECONDS must be a number."))
     if not cfg.rotate >= MIN_ROTATE:  # also catches NaN
-        _log.warning("ROTATE_SECONDS=%s ist zu klein, nehme / too small, using %ss (Fluxer rate limits)", cfg.rotate, MIN_ROTATE)
+        _log.warning(blog("ROTATE_SECONDS=%s ist zu klein, nehme %ss (Fluxer-Rate-Limits).",
+                      "ROTATE_SECONDS=%s is too small, using %ss (Fluxer rate limits).", cfg.rotate, MIN_ROTATE))
         cfg.rotate = MIN_ROTATE
     u = urllib.parse.urlparse(cfg.api)
     if u.scheme != "https" and not (u.scheme == "http" and u.hostname in ("localhost", "127.0.0.1", "::1")):
