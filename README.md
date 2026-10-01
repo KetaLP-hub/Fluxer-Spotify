@@ -1,179 +1,155 @@
+English | [Deutsch](README.de.md)
+
 # Spotify -> Fluxer
 
-Zeigt, was du gerade auf Spotify hörst, als **benutzerdefinierten Status in deinem Fluxer-Profil** (z. B. "🎵 Song – Künstler"). Optional postet es zusätzlich eine Karte per Webhook in einen Channel, die sich live selbst aktualisiert.
+Shows what you are currently listening to on Spotify as the **custom status in your Fluxer profile** (e.g. "🎵 Song – Artist"). Optionally it also posts a card into a channel via webhook that keeps updating itself live.
 
-Windows-Programm zum Doppelklicken, nichts zu installieren. Der Quellcode braucht nur Python 3.10+ (keine `pip install`-Pakete).
+A Windows program you just double-click, nothing to install. The source code only needs Python 3.10+ (no `pip install` packages).
 
-> **Hinweis:** Fluxer hat keine native Spotify-Integration. Dieses Tool setzt nur den **Text-Status**, mehr nicht.
+> **Note:** Fluxer has no native Spotify integration. This tool only sets the **text status**, nothing more.
 
-## Einrichtung (Doppelklick, den Rest erledigt das Programm)
+## Quick start (double-click, the program handles the rest)
 
-1. **`Fluxer-Spotify.exe` herunterladen** unter [Releases](https://github.com/KetaLP-hub/Fluxer-Spotify/releases) und doppelklicken.
-2. **Fragen beantworten.** Beim ersten Start führt dich das Programm Schritt für Schritt durch alles, was noch fehlt, und überspringt, was schon erledigt ist:
-   1. **Spotify Client ID:** Das Programm öffnet https://developer.spotify.com/dashboard. Dort "Create app" wählen, als Redirect URI genau `http://127.0.0.1:8888/callback` eintragen, die **Client ID** kopieren und im Fenster einfügen. Sie wird gespeichert.
-   2. **Spotify-Login:** Der Browser öffnet sich, "Zustimmen" klicken.
-   3. **Fluxer-Login:** E-Mail und Passwort (und 2FA-Code, falls aktiv). Geht das nicht (z. B. Passkey-Account), bietet das Programm an, stattdessen einen Token einzufügen.
-   4. Zum Schluss sagt es **klar, dass es dauerhaft im Hintergrund weiterlaufen kann und wie man es beendet bzw. deinstalliert**, und fragt einmal, ob es **mit Windows starten** soll (j/n, startet dann unsichtbar) und ob es **jetzt das Fenster verstecken** und im Hintergrund weiterlaufen soll (j/n).
-3. Danach läuft der Status. Im Vordergrund: Fenster offen lassen und mit `Strg+C` beenden, der Status wird dabei gelöscht.
+1. **Download `Fluxer-Spotify.exe`** from [Releases](https://github.com/KetaLP-hub/Fluxer-Spotify/releases) and double-click it.
+2. **Answer the questions.** On first start the program walks you through everything that is still missing and skips what is already done:
+   1. **Spotify Client ID:** The program opens https://developer.spotify.com/dashboard. Choose "Create app", enter exactly `http://127.0.0.1:8888/callback` as the Redirect URI, copy the **Client ID** and paste it into the window. It is saved.
+   2. **Spotify login:** Your browser opens, click "Agree".
+   3. **Fluxer login:** E-mail and password (and a 2FA code if enabled). If that does not work (e.g. passkey account), the program offers to let you paste a token instead.
+   4. Finally it **states clearly that it can keep running in the background and how to stop or uninstall it**, and asks once whether it should **start with Windows** (y/n, then it starts invisibly) and whether it should **hide the window now** and continue in the background (y/n).
+3. After that the status is running. In the foreground: keep the window open and stop with `Ctrl+C`; the status is cleared when you do.
 
-Beim nächsten Start fragt das Programm nur noch nach, wenn ein Login abgelaufen ist. Alle Daten liegen in `%APPDATA%\spotify-fluxer` (u. a. `state.json`, `.env` optional). Bei einem Fehler bleibt das Fenster offen ("Drücke Enter"), damit du die Meldung lesen kannst.
+On the next start the program only asks again if a login has expired. All data lives in `%APPDATA%\spotify-fluxer` (including `state.json`, optionally `.env`). On an error the window stays open ("Press Enter") so you can read the message.
 
-**Jede Person braucht ihre eigene (kostenlose) Spotify-App.** Das ist von Spotify so gewollt: Eine App im Entwicklermodus darf nur 25 Nutzer freischalten, deshalb kann es keine gemeinsame App für alle geben.
+**Every person needs their own (free) Spotify app.** This is by Spotify's design: an app in development mode may only allow 25 users, so there cannot be one shared app for everyone.
 
-### Hintergrundbetrieb (ohne sichtbares Fenster)
+### Background mode (no visible window)
 
-`Fluxer-Spotify.exe run --background` (Alias `--hidden`) läuft ohne Fenster: Die Konsole wird versteckt, das Log geht in eine Datei, es gibt nie eine Eingabeaufforderung. Ist die Einrichtung unvollständig oder ein Login abgelaufen, beendet es sich mit einem Log-Eintrag und zeigt **einmal** eine Windows-Meldung: dann das Programm normal (Doppelklick) starten, es fragt nur nach, was fehlt. Ist beim Windows-Start das Netzwerk noch nicht da, versucht es es einige Minuten lang erneut. Den Autostart-Eintrag (`install-autostart`, oder die Frage im Assistenten) startet immer diese unsichtbare Variante.
+`Fluxer-Spotify.exe run --background` (alias `--hidden`) runs without a window: the console is hidden, the log goes to a file, and there is never a prompt. If setup is incomplete or a login has expired, it exits with a log entry and shows a Windows message **once**: then start the program normally (double-click), it only asks for what is missing. If the network is not up yet at Windows startup, it retries for a few minutes. The autostart entry (`install-autostart`, or the question in the wizard) always launches this invisible variant.
 
-- **Beenden:** `Fluxer-Spotify.exe stop` (löscht vorher den Fluxer-Status) oder im Task-Manager den Prozess `Fluxer-Spotify.exe` beenden (das löscht den Status nicht; ein Neustart oder `logout` setzt ihn zurück). Es läuft immer nur **eine** Instanz; ein zweiter Start meldet das bzw. beendet sich still.
-- **Log:** `%APPDATA%\spotify-fluxer\fluxer-spotify.log` (rotierend, max. ca. 1,5 MB), die letzten 50 Zeilen mit `Fluxer-Spotify.exe logs`. `status` zeigt, ob die Hintergrund-Instanz läuft.
-- **Komplett entfernen:** `Fluxer-Spotify.exe uninstall` (nach Rückfrage: stoppt das Programm, entfernt den Autostart, meldet ab und löscht `state.json`, `.env` und Logs). Die exe selbst löschst du danach von Hand.
-- **Ehrlicher Hinweis:** Ein unsichtbar laufendes Programm ist nur dann für die Person transparent, wenn sie es weiß. Deshalb sagt der Einrichtungs-Assistent ausdrücklich, dass das Programm im Hintergrund weiterläuft und wie man es beendet und deinstalliert. Installiere es nicht auf Rechnern anderer Personen ohne deren Wissen.
-- Das Verstecken betrifft nur das eigene Fenster der exe; startest du es aus einer geöffneten Eingabeaufforderung, bleibt diese sichtbar (nur das Log geht in die Datei).
+- **Stop:** `Fluxer-Spotify.exe stop` (clears the Fluxer status first) or end the `Fluxer-Spotify.exe` process in Task Manager (this does not clear the status; a restart or `logout` resets it). Only **one** instance runs at a time; a second start reports that or exits silently.
+- **Log:** `%APPDATA%\spotify-fluxer\fluxer-spotify.log` (rotating, max. about 1.5 MB); the last 50 lines with `Fluxer-Spotify.exe logs`. `status` shows whether the background instance is running.
+- **Remove completely:** `Fluxer-Spotify.exe uninstall` (after confirmation: stops the program, removes autostart, logs out and deletes `state.json`, `.env` and logs). You delete the exe itself by hand afterwards.
+- **Honest note:** A program running invisibly is only transparent to a person if they know about it. That is why the setup wizard explicitly says that the program keeps running in the background and how to stop and uninstall it. Do not install it on other people's machines without their knowledge.
+- Hiding only affects the exe's own window; if you start it from an open command prompt, that stays visible (only the log goes to the file).
 
-### Windows warnt vor der Datei (SmartScreen / Virenscanner)
+### Windows warns about the file (SmartScreen / antivirus)
 
-Die exe ist **nicht code-signiert** (ein Zertifikat kostet Geld). Windows SmartScreen zeigt daher "Der Computer wurde durch Windows geschützt" ("Weitere Informationen" -> "Trotzdem ausführen"), und manche Virenscanner schlagen bei PyInstaller-Programmen fälschlich an (Fehlalarm). Prüfe die Datei mit der `.sha256` aus dem Release (`certutil -hashfile Fluxer-Spotify.exe SHA256`) oder baue sie selbst aus dem Quellcode (siehe unten). Wer der exe nicht traut, startet einfach `python spotify_status.py`.
+The exe is **not code-signed** (a certificate costs money). Windows SmartScreen therefore shows "Windows protected your PC" ("More info" -> "Run anyway"), and some antivirus tools wrongly flag PyInstaller programs (false positive). Verify the file with the `.sha256` from the release (`certutil -hashfile Fluxer-Spotify.exe SHA256`) or build it yourself from source (see below). If you do not trust the exe, just run `python spotify_status.py`.
 
-Kein DevTools, kein Token-Kopieren, keine Umgebungsvariablen.
+No DevTools, no copying tokens, no environment variables.
 
-### Was passiert mit deinem Passwort?
+### What happens to your password?
 
-- Du gibst E-Mail und Passwort **nur in der Konsole** ein (unsichtbar, `getpass`). Es gibt bewusst **keine** Option, das Passwort per Flag, Umgebungsvariable oder Datei zu übergeben.
-- Das Passwort wird **genau einmal** an die Fluxer-API (`https://api.fluxer.app/v1/auth/login`) gesendet und **nirgends gespeichert**, auch nicht im Log.
-- Gespeichert wird nur der **Session-Token** in `state.json` (lokal, atomar geschrieben, unter Linux/macOS mit Rechten `0600`). Der Token erscheint in keiner Log-Zeile.
-- Das Tool legt eine **eigene Sitzung** an. Du siehst sie in den Fluxer-Einstellungen und kannst sie dort jederzeit beenden. `logout` beendet sie ebenfalls.
-- Python kann Strings nicht aktiv überschreiben; das Tool verwirft die Referenz sofort nach dem Login, der Prozess endet danach.
-- Das Captcha beim Login (ALTCHA, eine reine Rechenaufgabe) löst das Tool automatisch.
+- You enter e-mail and password **only in the console** (hidden, `getpass`). There is deliberately **no** option to pass the password via a flag, environment variable or file.
+- The password is sent **exactly once** to the Fluxer API (`https://api.fluxer.app/v1/auth/login`) and **stored nowhere**, not even in the log.
+- Only the **session token** is stored, in `state.json` (local, written atomically, with `0600` permissions on Linux/macOS). The token appears in no log line.
+- The tool creates its **own session**. You can see it in the Fluxer settings and end it there at any time. `logout` ends it as well.
+- Python cannot actively overwrite strings; the tool drops the reference right after login, and the process ends afterwards.
+- The login captcha (ALTCHA, a pure proof-of-work puzzle) is solved automatically by the tool.
 
-### Weitere Befehle
+### More commands
 
-| Befehl | Zweck |
+| Command | Purpose |
 |---|---|
-| `status` / `doctor` | prüft Konfiguration, Spotify- und Fluxer-Login und gibt Hinweise in Klartext (zeigt nie Geheimnisse) |
-| `logout` | löscht den Fluxer-Status, beendet die Fluxer-Sitzung (nur wenn sie von `fluxer-login` stammt) und löscht gespeicherte Tokens (`--keep-spotify` behält den Spotify-Login) |
-| `fluxer-token` | Fallback: Token aus dem Browser einfügen (siehe unten) |
-| `run --background` | unsichtbar im Hintergrund laufen (siehe oben) |
-| `stop` / `logs` / `uninstall` | Hintergrund-Instanz beenden / letzte 50 Logzeilen / alles entfernen |
-| `install-autostart` / `uninstall-autostart` | Windows: unsichtbarer Start mit der Anmeldung (Startup-Ordner, kein Admin nötig, Log in `fluxer-spotify.log`) |
-| `-v` / `--verbose` | ausführliches Log (ohne Geheimnisse) |
+| `status` / `doctor` | checks configuration, Spotify and Fluxer login and gives hints in plain language (never shows secrets) |
+| `logout` | clears the Fluxer status, ends the Fluxer session (only if it came from `fluxer-login`) and deletes stored tokens (`--keep-spotify` keeps the Spotify login) |
+| `fluxer-token` | fallback: paste a token from the browser (see below) |
+| `run --background` | run invisibly in the background (see above) |
+| `stop` / `logs` / `uninstall` | stop the background instance / last 50 log lines / remove everything |
+| `install-autostart` / `uninstall-autostart` | Windows: invisible start at login (Startup folder, no admin needed, log in `fluxer-spotify.log`) |
+| `-v` / `--verbose` | verbose log (without secrets) |
 
-### Einstellungen
+### Settings
 
-Normalerweise nicht nötig. Reihenfolge: **Kommandozeilen-Flags > Umgebungsvariablen > `.env` (im Datenordner) > vom Programm gespeicherte Werte**. Siehe `.env.example`.
+Normally not needed. Order of precedence: **command-line flags > environment variables > `.env` (in the data folder) > values saved by the program**. See `.env.example`.
 
-- `--template` / `STATUS_TEMPLATE`: Text des Status, z. B. `🎵 {title} – {artist}` (Standard). Platzhalter: `{title}`, `{artist}`, `{album}`. Maximal 128 Zeichen.
-- `--on-pause` / `ON_PAUSE`: `clear` (Standard, Status bei Pause löschen), `keep` (stehen lassen) oder `stats` (bei Pause nur die Statistik-Zeilen `top_artist` und `listening_today` rotieren lassen; ist keine davon aktiv, wird gelöscht). Wenn gar nichts läuft, wird der Status immer gelöscht.
-- `--lines` / `STATUS_LINES`: die rotierenden Statuszeilen in der gewünschten Reihenfolge (Standard `now,playlist,top_artist,listening_today`). Siehe unten.
-- `--rotate` / `ROTATE_SECONDS`: Sekunden pro Zeile (Standard 30, **Minimum 15**; kleinere Werte werden mit einer Warnung auf 15 gesetzt, damit Fluxer nicht zugespammt wird).
-- `--no-rotate` / `NO_ROTATE=1`: keine Rotation, es wird nur die erste Zeile gezeigt (wie vor dieser Funktion).
+- `--template` / `STATUS_TEMPLATE`: text of the status, e.g. `🎵 {title} – {artist}` (default). Placeholders: `{title}`, `{artist}`, `{album}`. Maximum 128 characters.
+- `--on-pause` / `ON_PAUSE`: `clear` (default, clear the status on pause), `keep` (leave it) or `stats` (on pause, only rotate the statistics lines `top_artist` and `listening_today`; if neither is active, the status is cleared). If nothing is playing at all, the status is always cleared.
+- `--lines` / `STATUS_LINES`: the rotating status lines in the desired order (default `now,playlist,top_artist,listening_today`). See below.
+- `--rotate` / `ROTATE_SECONDS`: seconds per line (default 30, **minimum 15**; smaller values are set to 15 with a warning so Fluxer is not spammed).
+- `--no-rotate` / `NO_ROTATE=1`: no rotation, only the first line is shown (as before this feature).
+- `--webhook` / `FLUXER_WEBHOOK`: optional card in the channel.
+- `--interval` / `POLL_INTERVAL`: polling in seconds (at least 2).
 
-### Rotierende Statuszeilen
+### Rotating status lines
 
-Während ein Titel läuft, wechselt der Status reihum zwischen diesen Zeilen:
+While a track is playing, the status cycles through these lines:
 
-| Name | Beispiel | Quelle |
+| Name | Example | Source |
 |---|---|---|
-| `now` | `🎵 Titel – Artist` | aktueller Titel (Text über `--template`) |
-| `playlist` | `💿 aus "Playlist-Name"` | Playlist oder Album, aus dem gerade abgespielt wird |
-| `top_artist` | `🏆 Top-Artist diese Woche: Muse` | deine Top-Artists (`short_term`, ca. 4 Wochen laut Spotify), höchstens stündlich neu geholt |
-| `listening_today` | `🎧 heute 1 h 30 min gehört` | aus „zuletzt gespielt“, höchstens alle 5 Minuten neu geholt |
+| `now` | `🎵 Title – Artist` | current track (text via `--template`) |
+| `playlist` | `💿 aus "Playlist name"` | playlist or album currently playing from |
+| `top_artist` | `🏆 Top-Artist diese Woche: Muse` | your top artists (`short_term`, about 4 weeks according to Spotify), fetched at most hourly |
+| `listening_today` | `🎧 heute 1 h 30 min gehört` | from "recently played", fetched at most every 5 minutes |
 
-- Zeilen ohne Daten werden übersprungen, nie mit leeren Platzhaltern angezeigt (z. B. `playlist` bei Podcasts, Liked Songs oder Künstler-Radio). Bleibt nur eine Zeile übrig, gibt es keine Rotation.
-- Bei einem Titelwechsel (und bei Play/Pause) beginnt die Rotation neu mit der `now`-Zeile. Es wird nur dann an Fluxer gesendet, wenn sich der Text wirklich ändert. Bei Fehlern oder Rate-Limits (Retry-After) pausiert das Programm nur die Status-Updates, es stürzt nicht ab.
-- `playlist`: Der Playlist-Name wird einmal pro Playlist abgefragt. Private oder von Spotify generierte Playlists (403/404) liefern keinen Namen; dann steht der Album-Name da. Bei Alben wird der Album-Name ohne Anfrage genommen.
-- **Grenze von `listening_today`:** Die Spotify-API liefert nur die letzten 50 Wiedergaben. Wer heute mehr gehört hat, sieht deshalb nur einen Mindestwert („Untergrenze“). „Heute“ ist der lokale Kalendertag deines Rechners (ab 00:00 Uhr). Übersprungene Titel werden nur mit der Zeit gezählt, die sie tatsächlich liefen (grobe Schätzung aus den Abständen). Unter einer Minute wird die Zeile ausgelassen.
-- Eigene Zeilen: In `STATUS_LINES` kannst du statt eines Namens einen Text mit Platzhaltern angeben: `{title}` `{artist}` `{album}` `{playlist}` `{top_artist}` `{hours}` `{minutes}`. Fehlt ein Wert, wird die Zeile übersprungen. Namen trennst du mit Komma; enthält eine eigene Zeile selbst ein Komma, trenne alles mit `|`.
-- Jede Zeile wird auf 128 Zeichen gekürzt (mit `…` am Ende, das Emoji am Anfang bleibt).
+(The example texts are the literal German strings the program produces.)
 
-Beispiel `.env`:
+- Lines without data are skipped, never shown with empty placeholders (e.g. `playlist` for podcasts, Liked Songs or artist radio). If only one line is left, there is no rotation.
+- On a track change (and on play/pause) the rotation restarts with the `now` line. Something is only sent to Fluxer when the text actually changes. On errors or rate limits (Retry-After) the program only pauses status updates; it does not crash.
+- `playlist`: The playlist name is looked up once per playlist. Private or Spotify-generated playlists (403/404) yield no name; the album name is shown instead. For albums the album name is used without a request.
+- **Limit of `listening_today`:** The Spotify API only returns the last 50 plays. If you listened to more today, you therefore only see a minimum value ("lower bound"). "Today" is the local calendar day of your machine (from 00:00). Skipped tracks only count for the time they actually ran (rough estimate from the gaps between plays). Under one minute the line is omitted.
+- Custom lines: in `STATUS_LINES` you can give a text with placeholders instead of a name: `{title}` `{artist}` `{album}` `{playlist}` `{top_artist}` `{hours}` `{minutes}`. If a value is missing, the line is skipped. Separate names with a comma; if a custom line itself contains a comma, separate everything with `|`.
+- Every line is truncated to 128 characters (with `…` at the end, the leading emoji stays).
+
+Example `.env`:
 
 ```
 STATUS_LINES=now,playlist,top_artist,listening_today
 ROTATE_SECONDS=30
 ON_PAUSE=stats
-# oder eigene Zeilen:
+# or custom lines:
 # STATUS_LINES=now|🔥 {top_artist} läuft bei mir|⏱ {hours} h {minutes} min heute
-# Rotation aus:
+# rotation off:
 # NO_ROTATE=1
 ```
 
-`doctor` zeigt die aktiven Zeilen und das Intervall an.
-- `--webhook` / `FLUXER_WEBHOOK`: optionale Karte im Channel.
-- `--interval` / `POLL_INTERVAL`: Abfrage in Sekunden (mindestens 2).
+`doctor` shows the active lines and the interval.
 
-## Probleme?
+## Troubleshooting
 
-Zuerst: `Fluxer-Spotify.exe status` (bzw. `python spotify_status.py status`). Abgelaufene Logins erneuert das Programm beim nächsten Start von selbst.
+First: `Fluxer-Spotify.exe status` (or `python spotify_status.py status`). Expired logins are renewed by the program itself on the next start.
 
-- **"INVALID_CLIENT: Invalid redirect URI"** bei Spotify: Die Redirect URI im Dashboard muss exakt `http://127.0.0.1:8888/callback` lauten (nicht `localhost`, kein Slash am Ende).
-- **Spotify 401 / "Neu anmelden"**: `python spotify_status.py login`.
-- **Fluxer 401**: Sitzung abgelaufen oder in den Einstellungen beendet: `python spotify_status.py fluxer-login`.
-- **"E-Mail oder Passwort falsch"**: Tippfehler? Achtung, Fluxer erlaubt nur 5 Versuche pro 15 Minuten pro E-Mail.
-- **Neue IP-Adresse**: Fluxer schickt eine Bestätigungs-Mail. Link öffnen, das Tool wartet bis zu 10 Minuten.
-- **Account nur mit Passkey (WebAuthn) oder SSO**: Das geht in der Konsole nicht. Nutze den Fallback `fluxer-token`:
-  1. Fluxer im Browser öffnen (eingeloggt), `F12`, Reiter **Console**.
-  2. `copy(localStorage.getItem('token'))` eingeben (kopiert den Token in die Zwischenablage; laut Quellcode von Fluxer liegt er dort unter dem Schlüssel `token`).
-  3. `python spotify_status.py fluxer-token` und mit Strg+V einfügen. Der Token wird geprüft und gespeichert.
-  Dieser Token ist deine Browser-Sitzung: `logout` löscht ihn lokal, widerruft ihn aber **nicht**.
-- **403 von Fluxer**: Der Server verweigert die Aktion (z. B. Account gesperrt oder Automatisierung nicht erlaubt).
-- **Captcha-Fehler**: Der Server verlangt ein Captcha, das nicht ALTCHA ist: `fluxer-token` nutzen.
-- Nichts passiert: Läuft auf Spotify wirklich gerade ein Song (am besten in der Desktop- oder Handy-App)?
-- **Umlaute/Emoji als `?` in der Konsole**: nur Darstellung in alten Windows-Konsolen, der Status ist trotzdem korrekt.
+- **"INVALID_CLIENT: Invalid redirect URI"** at Spotify: The Redirect URI in the dashboard must be exactly `http://127.0.0.1:8888/callback` (not `localhost`, no trailing slash).
+- **Spotify 401 / "log in again"**: `python spotify_status.py login`.
+- **Fluxer 401**: Session expired or ended in the settings: `python spotify_status.py fluxer-login`.
+- **"Wrong e-mail or password"**: Typo? Note that Fluxer only allows 5 attempts per 15 minutes per e-mail.
+- **New IP address**: Fluxer sends a confirmation e-mail. Open the link; the tool waits up to 10 minutes.
+- **Account with passkey (WebAuthn) only, or SSO**: This does not work in the console. Use the `fluxer-token` fallback:
+  1. Open Fluxer in the browser (logged in), `F12`, **Console** tab.
+  2. Enter `copy(localStorage.getItem('token'))` (copies the token to the clipboard; according to Fluxer's source code it is stored there under the key `token`).
+  3. Run `python spotify_status.py fluxer-token` and paste with Ctrl+V. The token is verified and saved.
+  This token is your browser session: `logout` deletes it locally but does **not** revoke it.
+- **403 from Fluxer**: The server refuses the action (e.g. account blocked or automation not allowed).
+- **Captcha error**: The server requires a captcha that is not ALTCHA: use `fluxer-token`.
+- Nothing happens: Is a song really playing on Spotify right now (ideally in the desktop or phone app)?
+- **Umlauts/emoji shown as `?` in the console**: display issue in old Windows consoles only, the status itself is still correct.
 
-## Für Entwickler: Quellcode und exe bauen
+## For developers: building from source and the exe
 
 ```
-python spotify_status.py                     # Start aus dem Quellcode (Daten im Projektordner)
-python -m unittest discover -s tests -t .    # Tests (nur Standardbibliothek)
-pip install -r requirements-dev.txt          # PyInstaller, nur zum Bauen
-build_exe.bat                                # erzeugt dist\Fluxer-Spotify.exe
+python spotify_status.py                     # run from source (data in the project folder)
+python -m unittest discover -s tests -t .    # tests (standard library only)
+pip install -r requirements-dev.txt          # PyInstaller, only needed for building
+build_exe.bat                                # produces dist\Fluxer-Spotify.exe
 ```
 
-Die Laufzeit nutzt ausschließlich die Standardbibliothek; PyInstaller wird nur zum Bauen gebraucht. Ein Tag `v*` (z. B. `git tag v2.1.0 && git push --tags`) startet `.github/workflows/release.yml`: Tests, exe bauen, Release mit exe und SHA256 anlegen. Als exe liegen die Daten in `%APPDATA%\spotify-fluxer`, aus dem Quellcode im Projektordner (überschreibbar mit `--data-dir` oder `FLUXER_SPOTIFY_HOME`).
+The runtime uses only the standard library; PyInstaller is only needed for building. A `v*` tag (e.g. `git tag v2.1.0 && git push --tags`) triggers `.github/workflows/release.yml`: tests, build the exe, create a release with the exe and SHA256. As an exe, data lives in `%APPDATA%\spotify-fluxer`; from source it lives in the project folder (overridable with `--data-dir` or `FLUXER_SPOTIFY_HOME`).
 
-## Warnung (Nutzungsbedingungen)
+## Contributing
 
-Das Automatisieren eines **persönlichen Accounts** (Self-Bot) **kann gegen die Nutzungsbedingungen von Fluxer verstoßen**. Das Tool meldet sich wie ein Client mit deinem Account an und ändert nur deinen Status, aber **Benutzung auf eigenes Risiko**. Wer nur den Webhook nutzen will, braucht keinen Login (`FLUXER_WEBHOOK` setzen, kein `fluxer-login`).
+See [CONTRIBUTING.md](CONTRIBUTING.md): standard library only, run the tests before opening a PR, never log or commit secrets, user-facing messages are bilingual (German first, then English).
+
+## Warning (Terms of Service)
+
+Automating a **personal account** (self-bot) **may violate Fluxer's Terms of Service**. The tool signs in like a client with your account and only changes your status, but **use at your own risk**. If you only want the webhook, you do not need a login (set `FLUXER_WEBHOOK`, skip `fluxer-login`).
 
 ## SECURITY
 
-- `state.json` und `.env` enthalten Geheimnisse (Tokens, Webhook-URL). Sie stehen in `.gitignore`, **nie committen oder teilen**. Wer den Session-Token hat, hat vollen Zugriff auf deinen Fluxer-Account, bis die Sitzung beendet wird (`logout` oder Fluxer-Einstellungen).
-- Das Tool spricht nur mit `api.fluxer.app`, `accounts.spotify.com`, `api.spotify.com` und deinem Webhook. `FLUXER_API` muss `https://` nutzen (Ausnahme: localhost).
-- Auf Windows setzt das Tool keine NTFS-Rechte; die Datei liegt in deinem Benutzerordner. Auf einem geteilten Rechner den Ordner entsprechend schützen.
-- Sicherheitslücke gefunden? Bitte einen privaten Hinweis an die Maintainer statt eines öffentlichen Issues.
+- `state.json` and `.env` contain secrets (tokens, webhook URL). They are in `.gitignore`; **never commit or share them**. Whoever has the session token has full access to your Fluxer account until the session is ended (`logout` or Fluxer settings).
+- The tool only talks to `api.fluxer.app`, `accounts.spotify.com`, `api.spotify.com` and your webhook. `FLUXER_API` must use `https://` (exception: localhost).
+- On Windows the tool sets no NTFS permissions; the file lives in your user folder. On a shared machine, protect the folder accordingly.
+- Found a vulnerability? Please send a private note to the maintainers instead of opening a public issue.
 
----
+## License
 
-## English
-
-Mirrors your Spotify "now playing" into your Fluxer profile custom status, and optionally posts a self-updating embed via a Fluxer webhook. Stdlib-only Python 3.10+, no dependencies. Fluxer has no native Spotify integration, so this only sets the text status.
-
-**Setup (Windows):** download `Fluxer-Spotify.exe` from [Releases](https://github.com/KetaLP-hub/Fluxer-Spotify/releases) and double-click it. On first start it walks you through whatever is missing and skips what is done: (1) your Spotify Client ID (it opens the Spotify developer dashboard; create an app with redirect URI exactly `http://127.0.0.1:8888/callback`, paste the Client ID, it is saved), (2) Spotify login in the browser, (3) Fluxer login with e-mail + password (+ 2FA), with a token-paste fallback if that cannot work, (4) a one-time y/n question whether to start with Windows. The wizard states clearly that the program can keep running in the background and how to stop or uninstall it, then asks (y/n) whether to hide the window and continue in the background. Then the status loop runs; in a visible window Ctrl+C stops it and clears the status. Expired logins are renewed on the next start. Data lives in `%APPDATA%\spotify-fluxer`; on errors the window stays open until you press Enter.
-
-**Each user needs their own free Spotify developer app.** That is how Spotify works: apps in development mode are limited to 25 users, so a shared app for everyone is not possible.
-
-**Background mode:** `Fluxer-Spotify.exe run --background` (alias `--hidden`) runs with no window: console hidden, logging to `%APPDATA%\spotify-fluxer\fluxer-spotify.log` (rotating; `Fluxer-Spotify.exe logs` prints the last 50 lines), never prompts. If setup is incomplete or a login expired it exits with a log entry and shows a one-time Windows message asking you to start the program normally. Autostart always launches this hidden variant. Only one instance runs at a time. Stop it with `Fluxer-Spotify.exe stop` (clears the Fluxer status first) or end the `Fluxer-Spotify.exe` process in Task Manager (does not clear the status). `status` shows whether it runs. `Fluxer-Spotify.exe uninstall` (asks first) stops it, removes autostart, logs out and deletes `state.json`, `.env` and logs; delete the exe yourself. Running hidden is only transparent to the user if they were told, which is why the first-run wizard says explicitly that the program keeps running in the background and how to stop and uninstall it. Do not install it on someone else's machine without their knowledge.
-
-**SmartScreen / antivirus:** the exe is **unsigned**. Windows SmartScreen will warn ("More info" -> "Run anyway") and some antivirus tools flag PyInstaller executables as false positives. Verify the SHA256 published with each release, or build it yourself (`pip install -r requirements-dev.txt`, `build_exe.bat`), or run from source with `python spotify_status.py`.
-
-**Your password:** typed into the console only (hidden), sent exactly once to the Fluxer API, never stored or logged. Only the session token is stored in `state.json` (atomic writes, mode 0600 on POSIX). The tool creates its own session, which you can end in Fluxer's settings or with `logout`. The login captcha (ALTCHA proof-of-work) is solved automatically. Passkey-only or SSO accounts cannot log in from a CLI: use `fluxer-token` (browser console: `copy(localStorage.getItem('token'))`).
-
-**Commands:** `run` (default; `--background`/`--hidden`), `login`, `fluxer-login`, `fluxer-token`, `logout`, `status`/`doctor`, `stop`, `logs`, `uninstall`, `install-autostart`, `uninstall-autostart`, plus `-v`. Config precedence: flags > environment > `.env` > values stored by the wizard. Options: `--template "🎵 {title} – {artist}"` (text of the `now` line), `--on-pause clear|keep|stats`, `--webhook`, `--interval`, `--lines`, `--rotate`, `--no-rotate`.
-
-**Rotating status lines:** while a track plays, the status cycles through `now` (`🎵 title – artist`), `playlist` (`💿 aus "name"`, only when playing from a playlist or album), `top_artist` (`🏆 Top-Artist diese Woche: …`, Spotify top artists `short_term`, refreshed at most hourly) and `listening_today` (`🎧 heute 1 h 30 min gehört`, refreshed at most every 5 minutes). Set the order with `--lines` / `STATUS_LINES` (default `now,playlist,top_artist,listening_today`; comma separated, or `|` separated when a custom line contains a comma) and the time per line with `--rotate` / `ROTATE_SECONDS` (default 30, **hard minimum 15**: smaller values are clamped with a warning to avoid spamming Fluxer). `--no-rotate` / `NO_ROTATE=1` shows only the first line (the old behaviour).
-- Lines without data (e.g. `playlist` for a podcast or Liked Songs) are skipped, never rendered with empty placeholders; with one line left there is no rotation. A track change (or play/pause) restarts the rotation on the `now` line. A PATCH is only sent when the text actually changes; on errors or rate limits (Retry-After) status updates pause and the loop carries on.
-- `playlist` looks the name up once per playlist. Private or Spotify-generated playlists (403/404) have no readable name, so the album name is shown instead; for album contexts the album name is used without a request.
-- **`listening_today` is a lower bound:** the Spotify API only returns the last 50 plays, so heavy listening days are undercounted. "Today" is the local calendar day of your machine (from 00:00). Skipped tracks only count for the time they actually ran (estimated from the gaps between plays). Under one minute the line is omitted.
-- Custom lines: instead of a name, put a text with `{title} {artist} {album} {playlist} {top_artist} {hours} {minutes}` into `STATUS_LINES`; if a value is missing the line is skipped. Every line is truncated to 128 characters (ending in `…`, the leading emoji stays).
-- `--on-pause`: `clear` (default), `keep`, or `stats` (while paused rotate only `top_artist` and `listening_today`; if neither is enabled the status is cleared). Idle (nothing loaded) always clears.
-- `doctor` shows the active lines and the interval. Example `.env`:
-
-```
-STATUS_LINES=now,playlist,top_artist,listening_today
-ROTATE_SECONDS=30
-ON_PAUSE=stats
-```
-
-**Warning:** Automating a personal account may violate Fluxer's Terms of Service. Use at your own risk. Never commit or share `state.json` / `.env`.
-
-Licence: MIT.
+MIT, see [LICENSE](LICENSE).
