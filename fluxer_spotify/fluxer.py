@@ -87,6 +87,10 @@ LOGIN_ERRORS = {
 def login_error(e):
     de, en = LOGIN_ERRORS.get(e.code, (f"Anmeldung fehlgeschlagen (HTTP {e.status} {e.code or ''}).",
                                        f"Login failed (HTTP {e.status} {e.code or ''})."))
+    if e.code == "INVALID_FORM_BODY":  # welches Feld stoert? nur Pfad/Meldung, nie Werte
+        errs = e.field("errors") or e.field("issues") or e.field("message")
+        detail = json.dumps(errs, ensure_ascii=False)[:300] if errs else ""
+        de, en = de + " " + detail, en + " " + detail
     return LoginError(bi(de, en))
 
 
