@@ -46,6 +46,13 @@ class _Safe(dict):
         raise KeyError(key)
 
 
+def truncate(text, limit=MAX_STATUS):
+    """Cut to the limit with an ellipsis. Only the end is cut, so a leading emoji survives; a dangling ZWJ is dropped."""
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rstrip().rstrip("‍") + "…"
+
+
 def status_text(item, template):
     """Render the status template for a track/episode. Never raises on a bad template."""
     alb = item.get("album") or item.get("show") or {}
@@ -55,8 +62,7 @@ def status_text(item, template):
     except (KeyError, IndexError, ValueError) as e:
         log.warning("Bad STATUS_TEMPLATE (%s); using the default. Allowed: {title} {artist} {album}", e)
         text = DEFAULT_TEMPLATE.format_map(fields)
-    text = " ".join(text.split())
-    return text[:MAX_STATUS] or None
+    return truncate(" ".join(text.split())) or None
 
 
 @dataclass
@@ -65,6 +71,7 @@ class Snapshot:
     playing: bool
     item: Optional[dict]
     embed: dict
+    context: Optional[dict] = None  # Spotify playback context {type, uri} (playlist/album/...), if any
 
 
 # ---------------------------------------------------------------- client
@@ -134,12 +141,13 @@ class SpotifyClient:
         self._token_request(grant_type="authorization_code", code=got["code"], redirect_uri=REDIRECT, code_verifier=ver)
 
     # --- API
-    def get(self, path):
+    def get(self, path, retries=None):
         if self.clock() > self.store.get("exp", 0) - 60:
             self.refresh()
         for attempt in (0, 1):
             try:
-                return self.http.request("GET", API + path, headers={"Authorization": "Bearer " + self.store.get("access", "")})
+                return self.http.request("GET", API + path, headers={"Authorization": "Bearer " + self.store.get("access", "")},
+                                         retries=retries)
             except HttpError as e:
                 if e.status == 401 and attempt == 0:
                     log.info("Spotify 401: refreshing the access token")
@@ -160,7 +168,7 @@ class SpotifyClient:
         playing = bool(pb.get("is_playing"))
         dev = pb.get("device", {})
         key = (it["id"], playing, dev.get("name"), pb.get("shuffle_state"), pb.get("repeat_state"))
-        return Snapshot(key, playing, it, self._embed(pb, it, playing, dev) if full else {})
+        return Snapshot(key, playing, it, self._embed(pb, it, playing, dev) if full else {}, pb.get("context"))
 
     def _embed(self, pb, it, playing, dev):
         s = self._slow

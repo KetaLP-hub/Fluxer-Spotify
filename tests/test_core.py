@@ -8,7 +8,7 @@ from argparse import Namespace
 from pathlib import Path
 
 from fluxer_spotify import log as logmod
-from fluxer_spotify.config import DEFAULT_TEMPLATE, load_config, parse_dotenv
+from fluxer_spotify.config import DEFAULT_TEMPLATE, Config, load_config, parse_dotenv
 from fluxer_spotify.errors import Fatal
 from fluxer_spotify.http import HttpError, NetworkError
 from fluxer_spotify.runner import KEEP, Runner
@@ -162,7 +162,7 @@ def snap(playing=True, item=TRACK, key=None):
 
 class RunnerTests(unittest.TestCase):
     def make(self, on_pause, *snaps):
-        cfg = Namespace(template=DEFAULT_TEMPLATE, on_pause=on_pause, interval=2)
+        cfg = Config(data_dir=Path("."), on_pause=on_pause, interval=2, lines=("now",))
         fx = FakeFluxer()
         return Runner(cfg, FakeSpotify(*snaps), fx), fx
 
@@ -170,7 +170,7 @@ class RunnerTests(unittest.TestCase):
         r, fx = self.make("clear", snap(True), snap(True), snap(False, key=("t1", False)), snap(False, None, "idle"))
         for _ in range(4):
             r.tick()
-        self.assertEqual(fx.sent, ["🎵 Song – A, B", None, None])  # unchanged key => no re-send
+        self.assertEqual(fx.sent, ["🎵 Song – A, B", None])  # unchanged text => no re-send (pause and idle both clear)
 
     def test_pause_keep(self):
         r, fx = self.make("keep", snap(True), snap(False, key=("t1", False)), snap(False, None, "idle"))

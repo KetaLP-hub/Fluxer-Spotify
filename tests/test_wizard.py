@@ -119,6 +119,13 @@ class Steps(WizardCase):
         self.assertEqual((self.sp.refreshed, self.sp.logins, len(t.calls)), (1, 0, 1))
         self.assertEqual(self.opened, [])
 
+    def test_rotation_tip_is_printed_once_and_asks_nothing(self):
+        self.done_state(autostart_asked=True)
+        out = self.run_wizard(self.ctx(http=make_http((200, {"username": "s"}), (200, {"username": "s"}))[0]))
+        self.assertIn("--no-rotate", out)
+        out = self.run_wizard(self.ctx(http=make_http((200, {"username": "s"}))[0]))
+        self.assertNotIn("--no-rotate", out)
+
     def test_expired_spotify_relogs_in_only_spotify(self):
         self.done_state(autostart_asked=True)
         http, _, _ = make_http((200, {"username": "sophie"}))

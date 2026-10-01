@@ -29,6 +29,11 @@ def setup(ctx, tries=5, interactive=True):
             ctx.store.clear(("client_id",))
         raise
     _fluxer(ctx, tries)
+    if interactive and not ctx.cfg.no_rotate and not ctx.store.get("rotation_noted"):
+        n = f"{ctx.cfg.rotate:g}"
+        print(bi(f"Tipp: Der Status wechselt alle {n} s zwischen Titel, Playlist, Top-Artist und Hoerzeit; aendern mit --lines / --rotate / --no-rotate (siehe README).",
+                 f"Tip: the status rotates every {n} s between track, playlist, top artist and listening time; change it with --lines / --rotate / --no-rotate (see README)."))
+        ctx.store.update(rotation_noted=True)
     return interactive and _finish(ctx)
 
 

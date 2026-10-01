@@ -47,9 +47,13 @@ def build_parser():
     common.add_argument("--client-id", dest="client_id", default=S, help="Spotify Client ID")
     common.add_argument("--api", default=S, help="Fluxer API base URL (own instances only)")
     common.add_argument("--webhook", default=S, help="optional Fluxer webhook URL (channel card)")
-    common.add_argument("--template", default=S, help="status text with {title} {artist} {album}")
-    common.add_argument("--on-pause", dest="on_pause", choices=("clear", "keep"), default=S,
-                        help="clear or keep the status when playback is paused")
+    common.add_argument("--template", default=S, help="text of the 'now' status line, with {title} {artist} {album}")
+    common.add_argument("--lines", default=S, help="rotating status lines, comma separated (default: now,playlist,top_artist,listening_today); "
+                                                   "custom templates with {title} {artist} {album} {playlist} {top_artist} {hours} {minutes}, separated by |")
+    common.add_argument("--rotate", default=S, help="seconds per status line (default 30, minimum 15)")
+    common.add_argument("--no-rotate", dest="no_rotate", action="store_true", default=S, help="no rotation: only the first line")
+    common.add_argument("--on-pause", dest="on_pause", choices=("clear", "keep", "stats"), default=S,
+                        help="paused: clear the status, keep it, or rotate only the stats lines")
     common.add_argument("--interval", default=S, help="poll interval in seconds (min 2)")
     p = argparse.ArgumentParser(prog="spotify_status.py", parents=[common],
                                 description="Mirror Spotify 'now playing' into your Fluxer custom status.")
@@ -256,6 +260,8 @@ class Ctx:
                  "Loesung / fix: python spotify_status.py fluxer-login")
         line(None, f"Webhook: {'konfiguriert / configured' if self.cfg.webhook else 'nicht gesetzt / not set'}; "
                    f"Template: {self.cfg.template}; Pause: {self.cfg.on_pause}")
+        line(None, f"Status-Zeilen / lines: {', '.join(self.cfg.lines)}; "
+                   + ("keine Rotation / no rotation" if self.cfg.no_rotate else f"Rotation alle / every {self.cfg.rotate:g} s"))
         pid = background.running_pid(self.cfg.data_dir)
         line(None, f"Hintergrund-Instanz laeuft (PID {pid}); beenden: stop" if pid else "Keine Instanz laeuft",
              f"Background instance running (PID {pid}); stop it with: stop" if pid else "No instance is running")
@@ -341,7 +347,8 @@ class Ctx:
         if self._lock:
             self._lock.release()
         cfg = self.cfg
-        extra = ["--template", cfg.template, "--on-pause", cfg.on_pause, "--interval", str(cfg.interval), "--api", cfg.api]
+        extra = ["--template", cfg.template, "--on-pause", cfg.on_pause, "--interval", str(cfg.interval), "--api", cfg.api,
+                 "--lines", "|".join(cfg.lines), "--rotate", str(cfg.rotate)] + (["--no-rotate"] if cfg.no_rotate else [])
         try:
             pid = background.spawn_background(cfg.data_dir, extra)
         except OSError as e:

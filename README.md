@@ -62,7 +62,42 @@ Kein DevTools, kein Token-Kopieren, keine Umgebungsvariablen.
 Normalerweise nicht nötig. Reihenfolge: **Kommandozeilen-Flags > Umgebungsvariablen > `.env` (im Datenordner) > vom Programm gespeicherte Werte**. Siehe `.env.example`.
 
 - `--template` / `STATUS_TEMPLATE`: Text des Status, z. B. `🎵 {title} – {artist}` (Standard). Platzhalter: `{title}`, `{artist}`, `{album}`. Maximal 128 Zeichen.
-- `--on-pause` / `ON_PAUSE`: `clear` (Standard, Status bei Pause löschen) oder `keep` (stehen lassen). Wenn gar nichts läuft, wird der Status immer gelöscht.
+- `--on-pause` / `ON_PAUSE`: `clear` (Standard, Status bei Pause löschen), `keep` (stehen lassen) oder `stats` (bei Pause nur die Statistik-Zeilen `top_artist` und `listening_today` rotieren lassen; ist keine davon aktiv, wird gelöscht). Wenn gar nichts läuft, wird der Status immer gelöscht.
+- `--lines` / `STATUS_LINES`: die rotierenden Statuszeilen in der gewünschten Reihenfolge (Standard `now,playlist,top_artist,listening_today`). Siehe unten.
+- `--rotate` / `ROTATE_SECONDS`: Sekunden pro Zeile (Standard 30, **Minimum 15**; kleinere Werte werden mit einer Warnung auf 15 gesetzt, damit Fluxer nicht zugespammt wird).
+- `--no-rotate` / `NO_ROTATE=1`: keine Rotation, es wird nur die erste Zeile gezeigt (wie vor dieser Funktion).
+
+### Rotierende Statuszeilen
+
+Während ein Titel läuft, wechselt der Status reihum zwischen diesen Zeilen:
+
+| Name | Beispiel | Quelle |
+|---|---|---|
+| `now` | `🎵 Titel – Artist` | aktueller Titel (Text über `--template`) |
+| `playlist` | `💿 aus "Playlist-Name"` | Playlist oder Album, aus dem gerade abgespielt wird |
+| `top_artist` | `🏆 Top-Artist diese Woche: Muse` | deine Top-Artists (`short_term`, ca. 4 Wochen laut Spotify), höchstens stündlich neu geholt |
+| `listening_today` | `🎧 heute 1 h 30 min gehört` | aus „zuletzt gespielt“, höchstens alle 5 Minuten neu geholt |
+
+- Zeilen ohne Daten werden übersprungen, nie mit leeren Platzhaltern angezeigt (z. B. `playlist` bei Podcasts, Liked Songs oder Künstler-Radio). Bleibt nur eine Zeile übrig, gibt es keine Rotation.
+- Bei einem Titelwechsel (und bei Play/Pause) beginnt die Rotation neu mit der `now`-Zeile. Es wird nur dann an Fluxer gesendet, wenn sich der Text wirklich ändert. Bei Fehlern oder Rate-Limits (Retry-After) pausiert das Programm nur die Status-Updates, es stürzt nicht ab.
+- `playlist`: Der Playlist-Name wird einmal pro Playlist abgefragt. Private oder von Spotify generierte Playlists (403/404) liefern keinen Namen; dann steht der Album-Name da. Bei Alben wird der Album-Name ohne Anfrage genommen.
+- **Grenze von `listening_today`:** Die Spotify-API liefert nur die letzten 50 Wiedergaben. Wer heute mehr gehört hat, sieht deshalb nur einen Mindestwert („Untergrenze“). „Heute“ ist der lokale Kalendertag deines Rechners (ab 00:00 Uhr). Übersprungene Titel werden nur mit der Zeit gezählt, die sie tatsächlich liefen (grobe Schätzung aus den Abständen). Unter einer Minute wird die Zeile ausgelassen.
+- Eigene Zeilen: In `STATUS_LINES` kannst du statt eines Namens einen Text mit Platzhaltern angeben: `{title}` `{artist}` `{album}` `{playlist}` `{top_artist}` `{hours}` `{minutes}`. Fehlt ein Wert, wird die Zeile übersprungen. Namen trennst du mit Komma; enthält eine eigene Zeile selbst ein Komma, trenne alles mit `|`.
+- Jede Zeile wird auf 128 Zeichen gekürzt (mit `…` am Ende, das Emoji am Anfang bleibt).
+
+Beispiel `.env`:
+
+```
+STATUS_LINES=now,playlist,top_artist,listening_today
+ROTATE_SECONDS=30
+ON_PAUSE=stats
+# oder eigene Zeilen:
+# STATUS_LINES=now|🔥 {top_artist} läuft bei mir|⏱ {hours} h {minutes} min heute
+# Rotation aus:
+# NO_ROTATE=1
+```
+
+`doctor` zeigt die aktiven Zeilen und das Intervall an.
 - `--webhook` / `FLUXER_WEBHOOK`: optionale Karte im Channel.
 - `--interval` / `POLL_INTERVAL`: Abfrage in Sekunden (mindestens 2).
 
@@ -123,7 +158,21 @@ Mirrors your Spotify "now playing" into your Fluxer profile custom status, and o
 
 **Your password:** typed into the console only (hidden), sent exactly once to the Fluxer API, never stored or logged. Only the session token is stored in `state.json` (atomic writes, mode 0600 on POSIX). The tool creates its own session, which you can end in Fluxer's settings or with `logout`. The login captcha (ALTCHA proof-of-work) is solved automatically. Passkey-only or SSO accounts cannot log in from a CLI: use `fluxer-token` (browser console: `copy(localStorage.getItem('token'))`).
 
-**Commands:** `run` (default; `--background`/`--hidden`), `login`, `fluxer-login`, `fluxer-token`, `logout`, `status`/`doctor`, `stop`, `logs`, `uninstall`, `install-autostart`, `uninstall-autostart`, plus `-v`. Config precedence: flags > environment > `.env` > values stored by the wizard. Options: `--template "🎵 {title} – {artist}"`, `--on-pause clear|keep`, `--webhook`, `--interval`.
+**Commands:** `run` (default; `--background`/`--hidden`), `login`, `fluxer-login`, `fluxer-token`, `logout`, `status`/`doctor`, `stop`, `logs`, `uninstall`, `install-autostart`, `uninstall-autostart`, plus `-v`. Config precedence: flags > environment > `.env` > values stored by the wizard. Options: `--template "🎵 {title} – {artist}"` (text of the `now` line), `--on-pause clear|keep|stats`, `--webhook`, `--interval`, `--lines`, `--rotate`, `--no-rotate`.
+
+**Rotating status lines:** while a track plays, the status cycles through `now` (`🎵 title – artist`), `playlist` (`💿 aus "name"`, only when playing from a playlist or album), `top_artist` (`🏆 Top-Artist diese Woche: …`, Spotify top artists `short_term`, refreshed at most hourly) and `listening_today` (`🎧 heute 1 h 30 min gehört`, refreshed at most every 5 minutes). Set the order with `--lines` / `STATUS_LINES` (default `now,playlist,top_artist,listening_today`; comma separated, or `|` separated when a custom line contains a comma) and the time per line with `--rotate` / `ROTATE_SECONDS` (default 30, **hard minimum 15**: smaller values are clamped with a warning to avoid spamming Fluxer). `--no-rotate` / `NO_ROTATE=1` shows only the first line (the old behaviour).
+- Lines without data (e.g. `playlist` for a podcast or Liked Songs) are skipped, never rendered with empty placeholders; with one line left there is no rotation. A track change (or play/pause) restarts the rotation on the `now` line. A PATCH is only sent when the text actually changes; on errors or rate limits (Retry-After) status updates pause and the loop carries on.
+- `playlist` looks the name up once per playlist. Private or Spotify-generated playlists (403/404) have no readable name, so the album name is shown instead; for album contexts the album name is used without a request.
+- **`listening_today` is a lower bound:** the Spotify API only returns the last 50 plays, so heavy listening days are undercounted. "Today" is the local calendar day of your machine (from 00:00). Skipped tracks only count for the time they actually ran (estimated from the gaps between plays). Under one minute the line is omitted.
+- Custom lines: instead of a name, put a text with `{title} {artist} {album} {playlist} {top_artist} {hours} {minutes}` into `STATUS_LINES`; if a value is missing the line is skipped. Every line is truncated to 128 characters (ending in `…`, the leading emoji stays).
+- `--on-pause`: `clear` (default), `keep`, or `stats` (while paused rotate only `top_artist` and `listening_today`; if neither is enabled the status is cleared). Idle (nothing loaded) always clears.
+- `doctor` shows the active lines and the interval. Example `.env`:
+
+```
+STATUS_LINES=now,playlist,top_artist,listening_today
+ROTATE_SECONDS=30
+ON_PAUSE=stats
+```
 
 **Warning:** Automating a personal account may violate Fluxer's Terms of Service. Use at your own risk. Never commit or share `state.json` / `.env`.
 
