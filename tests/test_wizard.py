@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from fluxer_spotify import autostart, cli, config, wizard
+from fluxer_spotify import autostart, background, cli, config, wizard
 from fluxer_spotify.config import Config, load_config
 from fluxer_spotify.errors import AuthError, Fatal
 from tests.helpers import make_http
@@ -39,9 +39,10 @@ class WizardCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.d = Path(self.tmp.name)
-        p = mock.patch.object(autostart, "available", return_value=False)
-        p.start()
-        self.addCleanup(p.stop)
+        for mod in (autostart, background):
+            p = mock.patch.object(mod, "available", return_value=False)
+            p.start()
+            self.addCleanup(p.stop)
 
     def ctx(self, inputs=(), secrets=(), http=None, sp=None, **cfg):
         """Scripted input()/getpass(): running out of answers raises StopIteration = an unexpected prompt."""
@@ -195,11 +196,14 @@ class Frozen(unittest.TestCase):
         self.assertFalse(getattr(sys, "frozen", False))
         self.assertTrue((config.default_data_dir() / "fluxer_spotify").is_dir())
 
-    def test_autostart_points_at_exe_when_frozen(self):
-        text = autostart.launcher_text(r"C:\data", r"C:\Apps\Fluxer-Spotify.exe", r"C:\data\x.log", frozen=True)
-        self.assertIn(r'"C:\Apps\Fluxer-Spotify.exe" run', text)
-        self.assertNotIn("-m fluxer_spotify", text)
-        self.assertIn("-m fluxer_spotify", autostart.launcher_text("r", "python.exe", "l", frozen=False))
+    def test_autostart_launcher_is_hidden_vbs_for_background_variant(self):
+        argv = [r"C:\Apps\Fluxer-Spotify.exe", "run", "--background", "--data-dir", r"C:\My Data"]
+        text = autostart.launcher_text(argv, r"C:\Apps")
+        self.assertIn(", 0, False", text)  # window style 0 = hidden
+        self.assertIn("--background", text)
+        self.assertIn(r'""C:\My Data""', text)  # quotes doubled for VBScript
+        cmd, _ = background.background_command(r"C:\d", frozen=True, executable=r"C:\Apps\Fluxer-Spotify.exe")
+        self.assertEqual(cmd[:3], [r"C:\Apps\Fluxer-Spotify.exe", "run", "--background"])
 
     def test_frozen_errors_wait_for_enter(self):
         with mock.patch.object(sys, "frozen", True, create=True), mock.patch.object(cli, "main", return_value=1), \

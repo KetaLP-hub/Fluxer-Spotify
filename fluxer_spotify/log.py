@@ -42,15 +42,21 @@ def make_handler(stream=None, verbose=False):
     return h
 
 
-def setup(verbose=False, log_file=None):
+def add_file(path):
+    from logging.handlers import RotatingFileHandler
+    fh = RotatingFileHandler(path, maxBytes=512_000, backupCount=2, encoding="utf-8")
+    fh.setFormatter(RedactingFormatter("%(asctime)s %(levelname)-7s %(message)s"))
+    logging.getLogger("fluxer_spotify").addHandler(fh)
+
+
+def setup(verbose=False, log_file=None, console=True):
+    """console=False (background mode): file logging only, no dependence on stdout/stderr."""
     root = logging.getLogger("fluxer_spotify")
     root.handlers.clear()
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
-    root.addHandler(make_handler(verbose=verbose))
-    if log_file:
-        from logging.handlers import RotatingFileHandler
-        fh = RotatingFileHandler(log_file, maxBytes=512_000, backupCount=2, encoding="utf-8")
-        fh.setFormatter(RedactingFormatter("%(asctime)s %(levelname)-7s %(message)s"))
-        root.addHandler(fh)
+    if console:
+        root.addHandler(make_handler(verbose=verbose))
     root.propagate = False
+    if log_file:
+        add_file(log_file)
     return root

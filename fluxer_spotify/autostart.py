@@ -1,11 +1,12 @@
 """Windows autostart via a launcher script in the user's Startup folder (no admin rights needed)."""
 import os
-import sys
+import subprocess
 from pathlib import Path
 
 from .errors import Fatal, bi
 
-NAME = "Fluxer Spotify Status.cmd"
+NAME = "Fluxer Spotify Status.vbs"
+OLD_NAME = "Fluxer Spotify Status.cmd"  # v2 launcher (visible console window); replaced on install
 
 
 def startup_dir():
@@ -20,30 +21,32 @@ def available():
 
 
 def installed():
-    return (startup_dir() / NAME).exists()
+    return any((startup_dir() / n).exists() for n in (NAME, OLD_NAME))
 
 
-def launcher_text(root, python, log_file, frozen=None):
-    if frozen is None:
-        frozen = getattr(sys, "frozen", False)
-    if frozen:  # python is the exe itself (sys.executable); it is a console app, so start it minimised
-        return (f'@echo off\r\ncd /d "{root}"\r\nstart "" /min "{python}" run --log-file "{log_file}"\r\n')
-    pyw = Path(python).with_name("pythonw.exe")
-    exe = pyw if pyw.exists() else Path(python)
-    flag = "" if pyw.exists() else "/min "  # pythonw has no console window; plain python gets a minimised one
-    return (f'@echo off\r\ncd /d "{root}"\r\nstart "" {flag}"{exe}" -m fluxer_spotify run --log-file "{log_file}"\r\n')
+def launcher_text(argv, cwd):
+    """VBScript: wscript runs without any console and Run(..., 0) starts the program in a hidden window."""
+    q = lambda t: str(t).replace('"', '""')
+    cmd = subprocess.list2cmdline([str(a) for a in argv])
+    return (f'Set s = CreateObject("WScript.Shell")\r\n'
+            f's.CurrentDirectory = "{q(cwd)}"\r\n'
+            f's.Run "{q(cmd)}", 0, False\r\n')
 
 
-def install(root):
-    root = Path(root).resolve()
+def install(data_dir):
+    from . import background
+    argv, cwd = background.background_command(data_dir)
     target = startup_dir() / NAME
-    target.write_text(launcher_text(root, sys.executable, root / "fluxer-spotify.log"), encoding="utf-8")
+    target.write_text(launcher_text(argv, cwd), encoding="utf-8", newline="")
+    (startup_dir() / OLD_NAME).unlink(missing_ok=True)
     return target
 
 
 def uninstall():
-    target = startup_dir() / NAME
-    if target.exists():
-        target.unlink()
-        return target
-    return None
+    removed = None
+    for n in (NAME, OLD_NAME):
+        t = startup_dir() / n
+        if t.exists():
+            t.unlink()
+            removed = t
+    return removed
