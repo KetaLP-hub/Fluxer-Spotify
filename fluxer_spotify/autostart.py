@@ -15,7 +15,19 @@ def startup_dir():
     return Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
 
 
-def launcher_text(root, python, log_file):
+def available():
+    return os.name == "nt" and bool(os.environ.get("APPDATA"))
+
+
+def installed():
+    return (startup_dir() / NAME).exists()
+
+
+def launcher_text(root, python, log_file, frozen=None):
+    if frozen is None:
+        frozen = getattr(sys, "frozen", False)
+    if frozen:  # python is the exe itself (sys.executable); it is a console app, so start it minimised
+        return (f'@echo off\r\ncd /d "{root}"\r\nstart "" /min "{python}" run --log-file "{log_file}"\r\n')
     pyw = Path(python).with_name("pythonw.exe")
     exe = pyw if pyw.exists() else Path(python)
     flag = "" if pyw.exists() else "/min "  # pythonw has no console window; plain python gets a minimised one

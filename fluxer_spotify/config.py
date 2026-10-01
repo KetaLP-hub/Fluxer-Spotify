@@ -1,5 +1,6 @@
 """Configuration. Precedence: CLI flags > real environment > .env file > defaults."""
 import os
+import sys
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,6 +43,10 @@ def parse_dotenv(text):
 
 
 def default_data_dir():
+    """Source run: the project folder. Frozen exe: a per-user writable folder (never next to the exe, which may sit in Program Files)."""
+    if getattr(sys, "frozen", False):
+        base = os.environ.get("APPDATA") or os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
+        return Path(base) / "spotify-fluxer"
     return Path(__file__).resolve().parent.parent
 
 
@@ -50,6 +55,10 @@ def load_config(args=None, environ=None):
     environ = os.environ if environ is None else environ
     get = lambda name: getattr(args, name, None) if args is not None else None
     data_dir = Path(get("data_dir") or environ.get("FLUXER_SPOTIFY_HOME") or default_data_dir())
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise Fatal(bi(f"Datenordner nicht beschreibbar: {data_dir} ({e})", f"Data folder not writable: {data_dir} ({e})"))
     dotenv = {}
     env_file = data_dir / ".env"
     if env_file.exists():

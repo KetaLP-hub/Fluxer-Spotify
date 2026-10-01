@@ -4,6 +4,7 @@ import getpass
 import logging
 import signal
 import sys
+import webbrowser
 
 from . import __version__, autostart, log as logmod
 from .config import load_config
@@ -13,6 +14,7 @@ from .http import Http, HttpError, NetworkError
 from .runner import Runner
 from .spotify import SpotifyClient
 from .store import FLUXER_KEYS, SPOTIFY_KEYS, Store
+from . import wizard
 
 log = logging.getLogger("fluxer_spotify")
 COMMANDS = ("run", "login", "fluxer-login", "fluxer-token", "logout", "status", "doctor",
@@ -28,7 +30,7 @@ def build_parser():
     S = argparse.SUPPRESS  # unset flags must not shadow env/.env values
     common.add_argument("-v", "--verbose", action="store_true", default=S, help="debug logging (never prints secrets)")
     common.add_argument("--log-file", default=S, help="also write the log to this file")
-    common.add_argument("--data-dir", default=S, help="where .env and state.json live (default: project folder)")
+    common.add_argument("--data-dir", default=S, help="where .env and state.json live (default: project folder, or %%APPDATA%%\\spotify-fluxer for the exe)")
     common.add_argument("--client-id", dest="client_id", default=S, help="Spotify Client ID")
     common.add_argument("--api", default=S, help="Fluxer API base URL (own instances only)")
     common.add_argument("--webhook", default=S, help="optional Fluxer webhook URL (channel card)")
@@ -57,6 +59,23 @@ def build_parser():
 
 def _sigterm(*_):
     raise Stop()
+
+
+def entry():
+    """Console entry point. As a frozen exe the window would vanish on errors, so wait for Enter."""
+    frozen = getattr(sys, "frozen", False)
+    try:
+        rc = main()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        rc = 1
+    if frozen and rc not in (0, 130):
+        try:
+            input("\nDruecke Enter zum Schliessen. / Press Enter to close. ")
+        except (EOFError, KeyboardInterrupt):
+            pass
+    return rc
 
 
 def main(argv=None, http=None, getpass_fn=getpass.getpass, input_fn=input):
@@ -90,17 +109,17 @@ def main(argv=None, http=None, getpass_fn=getpass.getpass, input_fn=input):
 
 
 class Ctx:
-    def __init__(self, cfg, http, getpass_fn, input_fn):
-        self.cfg, self.http, self.getpass, self.input = cfg, http, getpass_fn, input_fn
+    def __init__(self, cfg, http, getpass_fn, input_fn, open_browser=webbrowser.open):
+        self.cfg, self.http, self.getpass, self.input, self.open_browser = cfg, http, getpass_fn, input_fn, open_browser
         self.store = Store(cfg.state_file)
+        if not cfg.client_id:  # precedence: flags > env > .env > stored by the wizard
+            cfg.client_id = self.store.get("client_id", "")
 
     # --- builders
     def spotify(self):
         if not self.cfg.client_id:
-            raise Fatal(bi("SPOTIFY_CLIENT_ID fehlt. Kopiere .env.example nach .env und trage die Client ID aus "
-                           "https://developer.spotify.com/dashboard ein.",
-                           "SPOTIFY_CLIENT_ID is missing. Copy .env.example to .env and paste the Client ID from "
-                           "https://developer.spotify.com/dashboard."))
+            raise Fatal(bi("Spotify Client ID fehlt. Starte das Programm ohne Zusatz (run), dann fragt es danach.",
+                           "Spotify Client ID is missing. Start the program without arguments (run) and it will ask for it."))
         return SpotifyClient(self.http, self.store, self.cfg.client_id)
 
     def fluxer(self):
@@ -115,7 +134,7 @@ class Ctx:
     def fluxer_login(self, args):
         print(bi("Fluxer-Login. Dein Passwort wird nur einmal an die Fluxer-API gesendet und nicht gespeichert.",
                  "Fluxer login. Your password is sent once to the Fluxer API only and is not stored."))
-        email = (args.email or self.input("E-Mail: ")).strip()
+        email = (getattr(args, "email", None) or self.input("E-Mail: ")).strip()
         password = self.getpass("Passwort / Password (Eingabe unsichtbar / hidden): ")
         logmod.add_secret(password)
 
@@ -174,7 +193,7 @@ class Ctx:
                 problems.append(de)
 
         print(f"spotify-fluxer {__version__}  (Daten / data: {self.cfg.data_dir})")
-        line(bool(self.cfg.client_id), "Spotify Client ID gesetzt" if self.cfg.client_id else "SPOTIFY_CLIENT_ID fehlt (.env.example -> .env)")
+        line(bool(self.cfg.client_id), "Spotify Client ID gesetzt" if self.cfg.client_id else "Spotify Client ID fehlt (beim Start ohne Zusatz wird sie abgefragt) / missing (asked on a plain start)")
         if self.store.get("refresh") and self.cfg.client_id:
             try:
                 sp = self.spotify()
@@ -207,16 +226,15 @@ class Ctx:
     def autostart(self, install):
         if install:
             path = autostart.install(_project_root())
-            print(bi(f"Autostart eingerichtet: {path} (Log: fluxer-spotify.log)", f"Autostart installed: {path} (log: fluxer-spotify.log)"))
+            print(bi(f"Autostart eingerichtet: {path} (Log: fluxer-spotify.log im Datenordner)",
+                     f"Autostart installed: {path} (log: fluxer-spotify.log in the data folder)"))
         else:
             t = autostart.uninstall()
             print(bi("Autostart entfernt.", "Autostart removed.") if t else bi("Kein Autostart gefunden.", "No autostart entry found."))
 
     def run(self):
+        wizard.setup(self)
         sp = self.spotify()
-        if not self.store.get("refresh"):
-            raise AuthError(bi("Noch nicht bei Spotify angemeldet. Erst ausfuehren: python spotify_status.py login",
-                               "Not logged in to Spotify yet. Run first: python spotify_status.py login"))
         fx = self.fluxer()
         hook = Webhook(self.http, self.cfg.webhook, self.store) if self.cfg.webhook else None
         if not (fx or hook):

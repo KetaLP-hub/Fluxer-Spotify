@@ -2,22 +2,29 @@
 
 Zeigt, was du gerade auf Spotify hörst, als **benutzerdefinierten Status in deinem Fluxer-Profil** (z. B. "🎵 Song – Künstler"). Optional postet es zusätzlich eine Karte per Webhook in einen Channel, die sich live selbst aktualisiert.
 
-Keine Abhängigkeiten (nur Python 3.10+ ab python.org, keine `pip install`-Pakete).
+Windows-Programm zum Doppelklicken, nichts zu installieren. Der Quellcode braucht nur Python 3.10+ (keine `pip install`-Pakete).
 
 > **Hinweis:** Fluxer hat keine native Spotify-Integration. Dieses Tool setzt nur den **Text-Status**, mehr nicht.
 
-## Einrichtung (3 Schritte)
+## Einrichtung (Doppelklick, den Rest erledigt das Programm)
 
-1. **Spotify-App anlegen** (jede Person braucht ihre eigene, das ist von Spotify so gewollt): Auf https://developer.spotify.com/dashboard einloggen, "Create app". Als Redirect URI genau `http://127.0.0.1:8888/callback` eintragen und speichern. Die **Client ID** notieren und in `.env` eintragen (`.env.example` nach `.env` kopieren, Zeile `SPOTIFY_CLIENT_ID`).
-2. **Einmal anmelden:**
-   ```
-   python spotify_status.py login          # Spotify (Browser öffnet sich)
-   python spotify_status.py fluxer-login   # Fluxer: E-Mail + Passwort (+ 2FA-Code falls aktiv)
-   ```
-   Unter Windows geht auch `start.bat login` / `start.bat fluxer-login`.
-3. **Starten:** `start.bat` doppelklicken (oder `python spotify_status.py`). Mit `Strg+C` beenden, der Status wird dabei gelöscht.
+1. **`Fluxer-Spotify.exe` herunterladen** unter [Releases](https://github.com/KetaLP-hub/Fluxer-Spotify/releases) und doppelklicken.
+2. **Fragen beantworten.** Beim ersten Start führt dich das Programm Schritt für Schritt durch alles, was noch fehlt, und überspringt, was schon erledigt ist:
+   1. **Spotify Client ID:** Das Programm öffnet https://developer.spotify.com/dashboard. Dort "Create app" wählen, als Redirect URI genau `http://127.0.0.1:8888/callback` eintragen, die **Client ID** kopieren und im Fenster einfügen. Sie wird gespeichert.
+   2. **Spotify-Login:** Der Browser öffnet sich, "Zustimmen" klicken.
+   3. **Fluxer-Login:** E-Mail und Passwort (und 2FA-Code, falls aktiv). Geht das nicht (z. B. Passkey-Account), bietet das Programm an, stattdessen einen Token einzufügen.
+   4. Zum Schluss fragt es einmal, ob es **mit Windows starten** soll (j/n).
+3. Danach läuft der Status. Fenster offen lassen (oder Autostart nutzen). Mit `Strg+C` beenden, der Status wird dabei gelöscht.
 
-Kein DevTools, kein Token-Kopieren mehr.
+Beim nächsten Start fragt das Programm nur noch nach, wenn ein Login abgelaufen ist. Alle Daten liegen in `%APPDATA%\spotify-fluxer` (u. a. `state.json`, `.env` optional). Bei einem Fehler bleibt das Fenster offen ("Drücke Enter"), damit du die Meldung lesen kannst.
+
+**Jede Person braucht ihre eigene (kostenlose) Spotify-App.** Das ist von Spotify so gewollt: Eine App im Entwicklermodus darf nur 25 Nutzer freischalten, deshalb kann es keine gemeinsame App für alle geben.
+
+### Windows warnt vor der Datei (SmartScreen / Virenscanner)
+
+Die exe ist **nicht code-signiert** (ein Zertifikat kostet Geld). Windows SmartScreen zeigt daher "Der Computer wurde durch Windows geschützt" ("Weitere Informationen" -> "Trotzdem ausführen"), und manche Virenscanner schlagen bei PyInstaller-Programmen fälschlich an (Fehlalarm). Prüfe die Datei mit der `.sha256` aus dem Release (`certutil -hashfile Fluxer-Spotify.exe SHA256`) oder baue sie selbst aus dem Quellcode (siehe unten). Wer der exe nicht traut, startet einfach `python spotify_status.py`.
+
+Kein DevTools, kein Token-Kopieren, keine Umgebungsvariablen.
 
 ### Was passiert mit deinem Passwort?
 
@@ -40,7 +47,7 @@ Kein DevTools, kein Token-Kopieren mehr.
 
 ### Einstellungen
 
-Reihenfolge: **Kommandozeilen-Flags > Umgebungsvariablen > `.env`**. Siehe `.env.example`.
+Normalerweise nicht nötig. Reihenfolge: **Kommandozeilen-Flags > Umgebungsvariablen > `.env` (im Datenordner) > vom Programm gespeicherte Werte**. Siehe `.env.example`.
 
 - `--template` / `STATUS_TEMPLATE`: Text des Status, z. B. `🎵 {title} – {artist}` (Standard). Platzhalter: `{title}`, `{artist}`, `{album}`. Maximal 128 Zeichen.
 - `--on-pause` / `ON_PAUSE`: `clear` (Standard, Status bei Pause löschen) oder `keep` (stehen lassen). Wenn gar nichts läuft, wird der Status immer gelöscht.
@@ -49,7 +56,7 @@ Reihenfolge: **Kommandozeilen-Flags > Umgebungsvariablen > `.env`**. Siehe `.env
 
 ## Probleme?
 
-Zuerst: `python spotify_status.py status`.
+Zuerst: `Fluxer-Spotify.exe status` (bzw. `python spotify_status.py status`). Abgelaufene Logins erneuert das Programm beim nächsten Start von selbst.
 
 - **"INVALID_CLIENT: Invalid redirect URI"** bei Spotify: Die Redirect URI im Dashboard muss exakt `http://127.0.0.1:8888/callback` lauten (nicht `localhost`, kein Slash am Ende).
 - **Spotify 401 / "Neu anmelden"**: `python spotify_status.py login`.
@@ -65,6 +72,17 @@ Zuerst: `python spotify_status.py status`.
 - **Captcha-Fehler**: Der Server verlangt ein Captcha, das nicht ALTCHA ist: `fluxer-token` nutzen.
 - Nichts passiert: Läuft auf Spotify wirklich gerade ein Song (am besten in der Desktop- oder Handy-App)?
 - **Umlaute/Emoji als `?` in der Konsole**: nur Darstellung in alten Windows-Konsolen, der Status ist trotzdem korrekt.
+
+## Für Entwickler: Quellcode und exe bauen
+
+```
+python spotify_status.py                     # Start aus dem Quellcode (Daten im Projektordner)
+python -m unittest discover -s tests -t .    # Tests (nur Standardbibliothek)
+pip install -r requirements-dev.txt          # PyInstaller, nur zum Bauen
+build_exe.bat                                # erzeugt dist\Fluxer-Spotify.exe
+```
+
+Die Laufzeit nutzt ausschließlich die Standardbibliothek; PyInstaller wird nur zum Bauen gebraucht. Ein Tag `v*` (z. B. `git tag v2.1.0 && git push --tags`) startet `.github/workflows/release.yml`: Tests, exe bauen, Release mit exe und SHA256 anlegen. Als exe liegen die Daten in `%APPDATA%\spotify-fluxer`, aus dem Quellcode im Projektordner (überschreibbar mit `--data-dir` oder `FLUXER_SPOTIFY_HOME`).
 
 ## Warnung (Nutzungsbedingungen)
 
@@ -83,14 +101,15 @@ Das Automatisieren eines **persönlichen Accounts** (Self-Bot) **kann gegen die 
 
 Mirrors your Spotify "now playing" into your Fluxer profile custom status, and optionally posts a self-updating embed via a Fluxer webhook. Stdlib-only Python 3.10+, no dependencies. Fluxer has no native Spotify integration, so this only sets the text status.
 
-**Setup**
-1. Create your own Spotify app at developer.spotify.com/dashboard (redirect URI exactly `http://127.0.0.1:8888/callback`) and put its Client ID into `.env` as `SPOTIFY_CLIENT_ID` (copy `.env.example`). Every user needs their own app; that is a Spotify requirement.
-2. `python spotify_status.py login` (Spotify, browser) and `python spotify_status.py fluxer-login` (Fluxer e-mail + password, plus your 2FA code if enabled).
-3. `python spotify_status.py` (or `start.bat`). Ctrl+C stops it and clears the status.
+**Setup (Windows):** download `Fluxer-Spotify.exe` from [Releases](https://github.com/KetaLP-hub/Fluxer-Spotify/releases) and double-click it. On first start it walks you through whatever is missing and skips what is done: (1) your Spotify Client ID (it opens the Spotify developer dashboard; create an app with redirect URI exactly `http://127.0.0.1:8888/callback`, paste the Client ID, it is saved), (2) Spotify login in the browser, (3) Fluxer login with e-mail + password (+ 2FA), with a token-paste fallback if that cannot work, (4) a one-time y/n question whether to start with Windows. Then the status loop runs; Ctrl+C stops it and clears the status. Expired logins are renewed on the next start. Data lives in `%APPDATA%\spotify-fluxer`; on errors the window stays open until you press Enter.
+
+**Each user needs their own free Spotify developer app.** That is how Spotify works: apps in development mode are limited to 25 users, so a shared app for everyone is not possible.
+
+**SmartScreen / antivirus:** the exe is **unsigned**. Windows SmartScreen will warn ("More info" -> "Run anyway") and some antivirus tools flag PyInstaller executables as false positives. Verify the SHA256 published with each release, or build it yourself (`pip install -r requirements-dev.txt`, `build_exe.bat`), or run from source with `python spotify_status.py`.
 
 **Your password:** typed into the console only (hidden), sent exactly once to the Fluxer API, never stored or logged. Only the session token is stored in `state.json` (atomic writes, mode 0600 on POSIX). The tool creates its own session, which you can end in Fluxer's settings or with `logout`. The login captcha (ALTCHA proof-of-work) is solved automatically. Passkey-only or SSO accounts cannot log in from a CLI: use `fluxer-token` (browser console: `copy(localStorage.getItem('token'))`).
 
-**Commands:** `run` (default), `login`, `fluxer-login`, `fluxer-token`, `logout`, `status`/`doctor`, `install-autostart`, `uninstall-autostart`, plus `-v`. Config precedence: flags > environment > `.env`. Options: `--template "🎵 {title} – {artist}"`, `--on-pause clear|keep`, `--webhook`, `--interval`.
+**Commands:** `run` (default), `login`, `fluxer-login`, `fluxer-token`, `logout`, `status`/`doctor`, `install-autostart`, `uninstall-autostart`, plus `-v`. Config precedence: flags > environment > `.env` > values stored by the wizard. Options: `--template "🎵 {title} – {artist}"`, `--on-pause clear|keep`, `--webhook`, `--interval`.
 
 **Warning:** Automating a personal account may violate Fluxer's Terms of Service. Use at your own risk. Never commit or share `state.json` / `.env`.
 

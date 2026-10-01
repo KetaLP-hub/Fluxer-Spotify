@@ -1,0 +1,31 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t . -v
+      - name: Build exe
+        run: |
+          pip install -r requirements-dev.txt
+          python -m PyInstaller --onefile --console --clean --noconfirm --name Fluxer-Spotify spotify_status.py
+      - name: Smoke test and SHA256
+        shell: pwsh
+        run: |
+          ./dist/Fluxer-Spotify.exe --version
+          $h = (Get-FileHash dist/Fluxer-Spotify.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  Fluxer-Spotify.exe" | Tee-Object -FilePath dist/Fluxer-Spotify.exe.sha256
+          "SHA256: $h" >> $env:GITHUB_STEP_SUMMARY
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/Fluxer-Spotify.exe dist/Fluxer-Spotify.exe.sha256 --title "${{ github.ref_name }}" --generate-notes --notes "Unsigned exe: Windows SmartScreen / antivirus may warn. Verify with the .sha256 file. Ungesignierte exe: SmartScreen/Virenscanner koennen warnen."

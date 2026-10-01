@@ -5,3 +5,6 @@ state.json.corrupt
 .state-*.tmp
 .env
 *.log
+dist/
+build/
+*.spec
