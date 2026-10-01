@@ -1,4 +1,7 @@
 __pycache__/
 *.pyc
 state.json
+state.json.corrupt
+.state-*.tmp
 .env
+*.log
