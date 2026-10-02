@@ -55,6 +55,7 @@ No DevTools, no copying tokens, no environment variables.
 | `status` / `doctor` | checks configuration, Spotify and Fluxer login and gives hints in plain language (never shows secrets) |
 | `logout` | clears the Fluxer status, ends the Fluxer session (only if it came from `fluxer-login`) and deletes stored tokens (`--keep-spotify` keeps the Spotify login) |
 | `fluxer-token` | fallback: paste a token from the browser (see below) |
+| `github-login` | optional: connect GitHub with a read-only token (adds the GitHub status lines, see below) |
 | `run --background` | run invisibly in the background (see above) |
 | `stop` / `logs` / `uninstall` | stop the background instance / last 50 log lines / remove everything |
 | `install-autostart` / `uninstall-autostart` | Windows: invisible start at login (Startup folder, no admin needed, log in `fluxer-spotify.log`) |
@@ -65,7 +66,8 @@ No DevTools, no copying tokens, no environment variables.
 Normally not needed. Order of precedence: **command-line flags > environment variables > `.env` (in the data folder) > values saved by the program**. See `.env.example`.
 
 - `--template` / `STATUS_TEMPLATE`: text of the status, e.g. `🎵 {title} – {artist}` (default). Placeholders: `{title}`, `{artist}`, `{album}`. Maximum 128 characters.
-- `--on-pause` / `ON_PAUSE`: `clear` (default, clear the status on pause), `keep` (leave it) or `stats` (on pause, only rotate the statistics lines `top_artist` and `listening_today`; if neither is active, the status is cleared). If nothing is playing at all, the status is always cleared.
+- `--on-pause` / `ON_PAUSE`: `clear` (default, clear the status on pause), `keep` (leave it) or `stats` (on pause, only rotate the statistics lines `top_artist`, `listening_today` and the GitHub lines; if none is active, the status is cleared).
+- `--on-idle` / `ON_IDLE`: what to do when nothing is playing at all (no track, not even paused). `clear` (default) clears the status. `lines` keeps rotating every configured line that needs no track (`top_artist`, `listening_today`, the GitHub lines and custom lines that only use those values), so your GitHub status stays visible without music.
 - `--lang` / `LANGUAGE`: language of all program texts: `auto` (default: follows the OS display language; German if it starts with `de`, otherwise English), `de` or `en`. The first interactive start asks once (Enter accepts the detected language) and stores the answer; set it explicitly to skip the question. It affects messages, errors, the setup wizard, `doctor`, tips, background notices, the default texts of the status lines and the webhook card. Your own `STATUS_TEMPLATE` / custom `STATUS_LINES` are never translated. Unknown values stop the program at startup. (A POSIX `LANGUAGE=de_DE:en` in the real environment is ignored; it is only used if it is `auto`, `de` or `en`.) The hidden background copy inherits the setting.
 - `--lines` / `STATUS_LINES`: the rotating status lines in the desired order (default `now,playlist,top_artist,listening_today`). See below.
 - `--rotate` / `ROTATE_SECONDS`: seconds per line (default 30, **minimum 15**; smaller values are set to 15 with a warning so Fluxer is not spammed).
@@ -90,8 +92,27 @@ While a track is playing, the status cycles through these lines:
 - On a track change (and on play/pause) the rotation restarts with the `now` line. Something is only sent to Fluxer when the text actually changes. On errors or rate limits (Retry-After) the program only pauses status updates; it does not crash.
 - `playlist`: The playlist name is looked up once per playlist. Private or Spotify-generated playlists (403/404) yield no name; the album name is shown instead. For albums the album name is used without a request.
 - **Limit of `listening_today`:** The Spotify API only returns the last 50 plays. If you listened to more today, you therefore only see a minimum value ("lower bound"). "Today" is the local calendar day of your machine (from 00:00). Skipped tracks only count for the time they actually ran (rough estimate from the gaps between plays). Under one minute the line is omitted.
-- Custom lines: in `STATUS_LINES` you can give a text with placeholders instead of a name: `{title}` `{artist}` `{album}` `{playlist}` `{top_artist}` `{hours}` `{minutes}`. If a value is missing, the line is skipped. Separate names with a comma; if a custom line itself contains a comma, separate everything with `|`.
+- Custom lines: in `STATUS_LINES` you can give a text with placeholders instead of a name: `{title}` `{artist}` `{album}` `{playlist}` `{top_artist}` `{hours}` `{minutes}` and the GitHub values `{gh_repo}` `{gh_ago}` `{gh_commits}` `{gh_prs}` `{gh_reviews}` `{gh_issues}` `{gh_streak}` `{gh_stars}` `{gh_followers}`. If a value is missing, the line is skipped. Separate names with a comma; if a custom line itself contains a comma, separate everything with `|`.
 - Every line is truncated to 128 characters (with `…` at the end, the leading emoji stays).
+
+### GitHub status lines (optional)
+
+`python spotify_status.py github-login` (or `Fluxer-Spotify.exe github-login`) connects GitHub with a **read-only token** (the input is hidden; on Windows the token is stored encrypted like the others). Create a *fine-grained* token at <https://github.com/settings/personal-access-tokens/new>: "Public repositories" is enough for public data; for counts from private repos (open PRs, reviews, issues) choose "All repositories" with **Pull requests: Read** and **Issues: Read**. Never give it write permissions.
+
+Once connected, these lines join the rotation (unless you set `STATUS_LINES` yourself; add the names below to it by hand in that case). Spotify stays required, GitHub is an extra source. Add `ON_IDLE=lines` to keep them visible while no music plays.
+
+| Name | Example | Meaning |
+|---|---|---|
+| `gh_push` | `💻 last push: you/project (2 h ago)` | your most recently pushed **public** repository (a private repo name is never shown) |
+| `gh_commits` | `💻 5 contributions on GitHub today` | today's contributions from your contribution calendar (commits, issues, PRs, reviews) |
+| `gh_prs` | `🔀 2 open pull requests` | your open pull requests |
+| `gh_reviews` | `👀 1 review requested` | open pull requests waiting for your review |
+| `gh_issues` | `📌 3 issues assigned` | open issues assigned to you |
+| `gh_streak` | `🔥 5-day streak on GitHub` | consecutive days with contributions (a day without any yet does not break it until it is over) |
+| `gh_stars` | `⭐ 13 stars on GitHub` | stars on your own repositories (the 100 most starred: a lower bound beyond that) |
+| `gh_followers` | `👥 42 followers` | your followers |
+
+Connecting adds `gh_push gh_commits gh_prs gh_reviews gh_issues gh_streak`; `gh_stars` and `gh_followers` are opt-in. Zero counts are hidden (`0 open pull requests` is noise), and so is a streak below 2 days. Everything comes from one GraphQL request, cached for 5 minutes. If GitHub is unreachable, rate-limited or the token was revoked, only the GitHub lines disappear; the Spotify status keeps running (`doctor` tells you what is wrong). `logout` deletes the stored token locally; to revoke it, delete it at <https://github.com/settings/personal-access-tokens>. The notifications API is not used (fine-grained tokens cannot access it).
 
 Example `.env`:
 
@@ -99,6 +120,7 @@ Example `.env`:
 STATUS_LINES=now,playlist,top_artist,listening_today
 ROTATE_SECONDS=30
 ON_PAUSE=stats
+ON_IDLE=lines
 # or custom lines:
 # STATUS_LINES=now|🔥 {top_artist} läuft bei mir|⏱ {hours} h {minutes} min heute
 # rotation off:

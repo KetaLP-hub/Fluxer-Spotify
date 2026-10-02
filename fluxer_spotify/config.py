@@ -13,14 +13,19 @@ from .errors import LANGS, Fatal, bi, detect_lang, blog
 DEFAULT_API = "https://api.fluxer.app/v1"
 DEFAULT_TEMPLATE = "🎵 {title} – {artist}"
 DEFAULT_LINES = ("now", "playlist", "top_artist", "listening_today")
-LINE_NAMES = DEFAULT_LINES
-LINE_FIELDS = ("title", "artist", "album", "playlist", "top_artist", "hours", "minutes")  # allowed in custom lines
+GH_LINES = ("gh_push", "gh_commits", "gh_prs", "gh_reviews", "gh_issues", "gh_streak", "gh_stars", "gh_followers")
+GH_DEFAULT_LINES = ("gh_push", "gh_commits", "gh_prs", "gh_reviews", "gh_issues", "gh_streak")  # added once GitHub is connected
+GH_FIELDS = ("gh_repo", "gh_ago", "gh_commits", "gh_prs", "gh_reviews", "gh_issues", "gh_streak", "gh_stars", "gh_followers")
+LINE_NAMES = DEFAULT_LINES + GH_LINES
+TRACK_LINES = ("now", "playlist")  # lines that need a current track; every other line also works while nothing plays
+LINE_FIELDS = ("title", "artist", "album", "playlist", "top_artist", "hours", "minutes") + GH_FIELDS  # allowed in custom lines
 MIN_ROTATE = 15.0  # hard floor: every rotation step is one PATCH to Fluxer
 ON_PAUSE_MODES = ("clear", "keep", "stats")
+ON_IDLE_MODES = ("clear", "lines")
 _log = logging.getLogger("fluxer_spotify.config")
 ENV_KEYS = {  # attribute -> environment variable
     "client_id": "SPOTIFY_CLIENT_ID", "fluxer_token": "FLUXER_TOKEN", "webhook": "FLUXER_WEBHOOK",
-    "api": "FLUXER_API", "template": "STATUS_TEMPLATE", "on_pause": "ON_PAUSE", "interval": "POLL_INTERVAL",
+    "api": "FLUXER_API", "template": "STATUS_TEMPLATE", "on_pause": "ON_PAUSE", "on_idle": "ON_IDLE", "interval": "POLL_INTERVAL",
     "lines": "STATUS_LINES", "rotate": "ROTATE_SECONDS", "no_rotate": "NO_ROTATE", "language": "LANGUAGE",
 }
 LANG_CHOICES = ("auto",) + LANGS
@@ -35,8 +40,10 @@ class Config:
     api: str = DEFAULT_API
     template: str = DEFAULT_TEMPLATE
     on_pause: str = "clear"  # "clear", "keep" or "stats"
+    on_idle: str = "clear"  # nothing playing at all: "clear" the status or keep rotating the lines that need no track ("lines")
     interval: float = 5.0
     lines: tuple = DEFAULT_LINES  # names from LINE_NAMES or custom templates, in rotation order
+    lines_explicit: bool = False  # True when the user set the lines (flag/env/.env); otherwise GitHub may add its default lines
     rotate: float = 30.0
     no_rotate: bool = False
     language: str = ""  # "" = not configured anywhere yet, else "auto" / "de" / "en"
@@ -130,7 +137,11 @@ def load_config(args=None, environ=None):
     if cfg.language and cfg.language not in LANG_CHOICES:
         raise Fatal(bi(f"LANGUAGE/--lang muss 'auto', 'de' oder 'en' sein (nicht '{cfg.language}').",
                        f"LANGUAGE/--lang must be 'auto', 'de' or 'en' (not '{cfg.language}')."))
+    cfg.lines_explicit = cfg.lines is not DEFAULT_LINES
     cfg.lines = parse_lines(cfg.lines)
+    cfg.on_idle = str(cfg.on_idle).lower()
+    if cfg.on_idle not in ON_IDLE_MODES:
+        raise Fatal(bi("ON_IDLE muss 'clear' oder 'lines' sein.", "ON_IDLE must be 'clear' or 'lines'."))
     cfg.no_rotate = str(cfg.no_rotate).strip().lower() in ("1", "true", "yes", "on", "j", "ja")
     try:
         cfg.rotate = float(cfg.rotate)

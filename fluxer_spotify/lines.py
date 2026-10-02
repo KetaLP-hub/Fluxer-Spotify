@@ -7,12 +7,15 @@ with an empty gap. Spotify is only asked for what the active lines need.
 import logging
 from datetime import datetime
 
-from .errors import bi, tr, blog
+from .config import GH_LINES, TRACK_LINES
+from .errors import AuthError, bi, tr, blog
 from .http import HttpError, NetworkError
 from .spotify import status_text, truncate, who
 
 log = logging.getLogger("fluxer_spotify.lines")
-STATS = ("top_artist", "listening_today")  # lines that do not depend on the current track
+STATS = ("top_artist", "listening_today") + GH_LINES  # lines that do not depend on the current track
+GH_KEY = {"gh_push": "repo", "gh_commits": "commits", "gh_prs": "prs", "gh_reviews": "reviews", "gh_issues": "issues",
+          "gh_streak": "streak", "gh_stars": "stars", "gh_followers": "followers"}  # line name -> key in GitHubClient.stats()
 
 
 def default_template(name, hours=0, minutes=0):
@@ -27,7 +30,45 @@ def default_template(name, hours=0, minutes=0):
     return name
 
 
-TTL_NAME, TTL_TOP, TTL_TODAY = 3600, 3600, 300  # seconds
+def gh_template(name, n):
+    """Default text of a GitHub line in the selected language; `n` picks singular or plural. The placeholder is filled in later."""
+    one = n == 1
+    if name == "gh_push":
+        return tr("💻 zuletzt gepusht: {gh_repo} ({gh_ago})", "💻 last push: {gh_repo} ({gh_ago})")
+    if name == "gh_commits":
+        return tr("💻 heute {gh_commits} " + ("Beitrag" if one else "Beiträge") + " auf GitHub",
+                  "💻 {gh_commits} contribution" + ("" if one else "s") + " on GitHub today")
+    if name == "gh_prs":
+        return tr("🔀 {gh_prs} " + ("offener" if one else "offene") + " Pull Request" + ("" if one else "s"),
+                  "🔀 {gh_prs} open pull request" + ("" if one else "s"))
+    if name == "gh_reviews":
+        return tr("👀 {gh_reviews} Review" + ("" if one else "s") + " angefragt", "👀 {gh_reviews} review" + ("" if one else "s") + " requested")
+    if name == "gh_issues":
+        return tr("📌 {gh_issues} Issue" + ("" if one else "s") + " zugewiesen", "📌 {gh_issues} issue" + ("" if one else "s") + " assigned")
+    if name == "gh_streak":
+        return tr("🔥 {gh_streak} Tage in Folge aktiv", "🔥 {gh_streak}-day streak on GitHub")
+    if name == "gh_stars":
+        return tr("⭐ {gh_stars} " + ("Stern" if one else "Sterne") + " auf GitHub", "⭐ {gh_stars} star" + ("" if one else "s") + " on GitHub")
+    if name == "gh_followers":
+        return tr("👥 {gh_followers} Follower", "👥 {gh_followers} follower" + ("" if one else "s"))
+    return name
+
+
+def ago(seconds):
+    s = max(0, int(seconds))
+    if s < 60:
+        return tr("gerade eben", "just now")
+    m = s // 60
+    if m < 60:
+        return tr(f"vor {m} min", f"{m} min ago")
+    h = m // 60
+    if h < 24:
+        return tr(f"vor {h} h", f"{h} h ago")
+    d = h // 24
+    return tr(f"vor {d} Tag" + ("" if d == 1 else "en"), f"{d} day" + ("" if d == 1 else "s") + " ago")
+
+
+TTL_NAME, TTL_TOP, TTL_TODAY, TTL_GH = 3600, 3600, 300, 300  # seconds
 ERR_TTL = (30, 3600)  # clamp for "try again later" after a failed lookup (Retry-After wins inside this range)
 
 
@@ -73,8 +114,8 @@ class _Fields(dict):
 
 
 class Lines:
-    def __init__(self, cfg, spotify, clock):
-        self.cfg, self.sp, self.clock = cfg, spotify, clock
+    def __init__(self, cfg, spotify, clock, github=None):
+        self.cfg, self.sp, self.clock, self.gh = cfg, spotify, clock, github
         self.cache = {}  # key -> (value, expires_at)
 
     # --- caching: failures are cached too (short), so a broken endpoint is not hammered every poll
@@ -85,11 +126,18 @@ class Lines:
             return hit[0]
         try:
             val = fetch()
+        except AuthError as e:  # e.g. a revoked GitHub token: never stop the music status for it, just stay quiet for a while
+            log.warning("%s", str(e).replace("\n", " / "))
+            val, ttl = None, ERR_TTL[1]
         except (HttpError, NetworkError) as e:
+            headers = getattr(e, "headers", None) or {}
             try:
-                wait = float(e.headers.get("retry-after"))
+                wait = float(headers.get("retry-after"))
             except (AttributeError, TypeError, ValueError):
-                wait = 120
+                try:  # GitHub primary rate limit: wait until the window resets
+                    wait = float(headers["x-ratelimit-reset"]) - now if headers.get("x-ratelimit-remaining") == "0" else 120
+                except (KeyError, TypeError, ValueError):
+                    wait = 120
             wait = min(ERR_TTL[1], max(ERR_TTL[0], wait))
             log.info(blog("Abfrage %s fehlgeschlagen (%s), neuer Versuch in %.0f s", "Lookup %s failed (%s), retry in %.0fs", key[0], e, wait))
             val, ttl = None, wait
@@ -97,7 +145,24 @@ class Lines:
         return val
 
     # --- data
+    def _gh_data(self):
+        return self._cached(("github",), TTL_GH, self.gh.stats) if self.gh else None
+
+    def _gh_value(self, key, hide_zero):
+        """One GitHub number/text, or None when unavailable. Built-in lines pass hide_zero: '0 open pull requests' is noise."""
+        data = self._gh_data()
+        if not data:
+            return None
+        if key == "ago":
+            return ago(self.clock() - data["pushed_at"]) if data.get("pushed_at") else None
+        value = data.get(key)
+        if hide_zero and value is not None and not isinstance(value, str) and value < (2 if key == "streak" else 1):
+            return None
+        return value
+
     def _playlist(self, snap):
+        if snap.item is None:
+            return None
         ctx = snap.context or {}
         parts = str(ctx.get("uri", "")).split(":")
         kind, cid = (parts[-2], parts[-1]) if len(parts) >= 3 else (None, None)
@@ -135,14 +200,22 @@ class Lines:
     def render(self, name, snap):
         """Text for one configured line, or None if it is unavailable right now."""
         item = snap.item
+        if item is None and name in TRACK_LINES:
+            return None  # nothing plays: only the lines that need no track can be shown
         if name == "now":
             return status_text(item, self.cfg.template)
+        item = item or {}
         alb = item.get("album") or item.get("show") or {}
         today = lambda i: (lambda: (self._today() or (None, None))[i])
+        hide = name in GH_LINES
+        gh = lambda key: (lambda: self._gh_value(key, hide))
         fields = _Fields({
             "title": lambda: item.get("name"), "artist": lambda: who(item), "album": lambda: alb.get("name"),
             "playlist": lambda: self._playlist(snap), "top_artist": self._top_artist,
-            "hours": today(0), "minutes": today(1)})
+            "hours": today(0), "minutes": today(1),
+            "gh_repo": gh("repo"), "gh_ago": gh("ago"), "gh_commits": gh("commits"), "gh_prs": gh("prs"),
+            "gh_reviews": gh("reviews"), "gh_issues": gh("issues"), "gh_streak": gh("streak"),
+            "gh_stars": gh("stars"), "gh_followers": gh("followers")})
         try:
             tpl = name
             if name == "listening_today":
@@ -150,6 +223,8 @@ class Lines:
                 tpl = default_template(name, h, m) if h is not None else None  # no data: unavailable
             elif name in ("playlist", "top_artist"):
                 tpl = default_template(name)
+            elif name in GH_LINES:
+                tpl = gh_template(name, (self._gh_data() or {}).get(GH_KEY[name]) or 0)
             text = tpl.format_map(fields) if tpl else None
         except (KeyError, IndexError, ValueError):
             return None
