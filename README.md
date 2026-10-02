@@ -38,12 +38,12 @@ The status is only updated while the program runs somewhere, so to keep it going
 
 1. Install **Termux** and **Termux:Boot** from [F-Droid](https://f-droid.org/packages/com.termux/) (the Play Store version of Termux is outdated).
 2. In Termux: `pkg update && pkg install python git`, then `git clone https://github.com/KetaLP-hub/Fluxer-Spotify && cd Fluxer-Spotify`.
-3. **Log in on the phone itself.** A login from the PC cannot be moved: on Windows the tokens are encrypted for your Windows user.
-   - `export BROWSER=termux-open-url` (so the Spotify login opens your phone's browser), then `python spotify_status.py`. The setup asks for the Spotify Client ID, then Spotify (the browser returns to `http://127.0.0.1:8888/callback`, which is this phone, so it works), then the Fluxer e-mail and password. Optional: `python spotify_status.py github-login`.
-   - Check with `python spotify_status.py doctor`.
-4. Try it: `sh termux/start.sh` (stop with Ctrl+C). It keeps the CPU awake (`termux-wake-lock`, you get a Termux notification) and runs the program in background mode: it never asks questions, writes `fluxer-spotify.log`, and after an error such as an expired login or no network it tries again every 5 minutes.
-5. Start after a reboot: `sh termux/install-boot.sh`, then open the **Termux:Boot** app once.
-6. **Switch off the Windows autostart** (`Fluxer-Spotify.exe uninstall-autostart`) or stop the PC instance. Two instances would overwrite each other's status.
+3. Run **`sh termux/setup.sh`**. It does everything in one go:
+   - **Log in on the phone itself.** A login from the PC cannot be moved: on Windows the tokens are encrypted for your Windows user. The Spotify login opens your phone's browser and returns to `http://127.0.0.1:8888/callback`, which is this phone, so it works. You are asked for the Spotify Client ID, then Spotify, then your Fluxer e-mail and password. Once it says it is running and your status looks right, press **Ctrl+C**.
+   - It checks the login (`doctor`), sets up the autostart after a reboot (open the **Termux:Boot** app once), and **starts the status in the background right away**.
+   - Optional afterwards: `python spotify_status.py github-login`.
+4. Under the hood: `sh termux/start.sh` keeps the CPU awake (`termux-wake-lock`, you get a Termux notification) and runs the program in background mode: it never asks questions, writes `fluxer-spotify.log`, and after an error such as an expired login or no network it tries again every 5 minutes. `sh termux/install-boot.sh` only sets up the autostart. You can run both by hand instead of `setup.sh` once you have logged in with `python spotify_status.py`.
+5. **Switch off the Windows autostart** (`Fluxer-Spotify.exe uninstall-autostart`) or stop the PC instance. Two instances would overwrite each other's status.
 
 Stop: `python spotify_status.py stop` (clears the status). Log: `python spotify_status.py logs`. Update: `git pull`.
 
