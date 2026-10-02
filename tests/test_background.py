@@ -1,3 +1,4 @@
+import ctypes  # noqa: F401 - must be imported before os.name is patched to "nt"
 import contextlib
 import io
 import json
