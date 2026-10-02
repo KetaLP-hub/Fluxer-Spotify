@@ -4,6 +4,9 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### Fixed
+- Release workflow: if a release for the tag already exists (e.g. created by hand in the GitHub UI), the exe and the `.sha256` are attached to it instead of failing at `gh release create`.
+
 ## [2.2.0] - 2026-10-02
 
 ### Added
