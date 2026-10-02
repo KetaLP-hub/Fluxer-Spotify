@@ -32,6 +32,27 @@ Beim nächsten Start fragt das Programm nur noch nach, wenn ein Login abgelaufen
 - **Ehrlicher Hinweis:** Ein unsichtbar laufendes Programm ist nur dann für die Person transparent, wenn sie es weiß. Deshalb sagt der Einrichtungs-Assistent ausdrücklich, dass das Programm im Hintergrund weiterläuft und wie man es beendet und deinstalliert. Installiere es nicht auf Rechnern anderer Personen ohne deren Wissen.
 - Das Verstecken betrifft nur das eigene Fenster der exe; startest du es aus einer geöffneten Eingabeaufforderung, bleibt diese sichtbar (nur das Log geht in die Datei).
 
+### Android (Termux): läuft auch bei ausgeschaltetem PC
+
+Der Status wird nur aktualisiert, solange das Programm irgendwo läuft. Damit er auch bei ausgeschaltetem PC weiterläuft, lass es auf deinem **Handy** laufen (kein Server nötig). Das nutzt den Quellcode (die exe gibt es nur für Windows) und die Python-Standardbibliothek, es gibt nichts per `pip` zu installieren.
+
+1. Installiere **Termux** und **Termux:Boot** über [F-Droid](https://f-droid.org/packages/com.termux/) (die Play-Store-Version von Termux ist veraltet).
+2. In Termux: `pkg update && pkg install python git`, dann `git clone https://github.com/KetaLP-hub/Fluxer-Spotify && cd Fluxer-Spotify`.
+3. **Melde dich auf dem Handy selbst an.** Ein Login vom PC lässt sich nicht mitnehmen: Unter Windows sind die Tokens für deinen Windows-Benutzer verschlüsselt.
+   - `export BROWSER=termux-open-url` (damit sich der Spotify-Login im Browser des Handys öffnet), dann `python spotify_status.py`. Die Einrichtung fragt nach der Spotify Client ID, dann nach Spotify (der Browser springt zurück auf `http://127.0.0.1:8888/callback`, das ist dieses Handy, also klappt es) und nach Fluxer-E-Mail und -Passwort. Optional: `python spotify_status.py github-login`.
+   - Prüfen mit `python spotify_status.py doctor`.
+4. Ausprobieren: `sh termux/start.sh` (beenden mit Strg+C). Das Skript hält die CPU wach (`termux-wake-lock`, dafür erscheint eine Termux-Benachrichtigung) und startet das Programm im Hintergrundmodus: Es fragt nie etwas, schreibt `fluxer-spotify.log` und versucht es nach einem Fehler wie abgelaufenem Login oder fehlendem Netz alle 5 Minuten erneut.
+5. Start nach einem Neustart: `sh termux/install-boot.sh`, danach die App **Termux:Boot** einmal öffnen.
+6. **Schalte den Windows-Autostart ab** (`Fluxer-Spotify.exe uninstall-autostart`) oder beende die Instanz am PC. Zwei Instanzen würden sich gegenseitig den Status überschreiben.
+
+Beenden: `python spotify_status.py stop` (löscht den Status). Log: `python spotify_status.py logs`. Aktualisieren: `git pull`.
+
+Gut zu wissen:
+- **Android kann Termux beenden, um Akku zu sparen.** Nimm Termux (und Termux:Boot) in den Android-Einstellungen von der Akku-Optimierung aus. Ab Android 12 kann das System außerdem Hintergrundprozesse von Apps wie Termux beenden (der „Phantom Process Killer“); hört der Status nach einer Weile auf, suche nach diesem Begriff für deine Android-Version. Wie streng das ist, hängt vom Hersteller deines Handys ab.
+- Android hat kein DPAPI: Die Tokens in `state.json` sind dort **nicht verschlüsselt**, nur durch Dateirechte im privaten Ordner der App geschützt. Kopiere diesen Ordner nicht herum.
+- Ist die Einrichtung unvollständig oder ein Login abgelaufen, steht im Log „Bitte Fluxer-Spotify.exe normal starten (Doppelklick)“. Auf dem Handy heißt das: `python spotify_status.py` in Termux ausführen.
+- Das wurde ohne Test auf einem echten Android-Gerät geschrieben. Die Logik der Skripte ist unter Linux getestet, die Android-Besonderheiten (Akku, Termux:Boot) nicht.
+
 ### Windows warnt vor der Datei (SmartScreen / Virenscanner)
 
 Die exe ist **nicht code-signiert** (ein Zertifikat kostet Geld). Windows SmartScreen zeigt daher "Der Computer wurde durch Windows geschützt" ("Weitere Informationen" -> "Trotzdem ausführen"), und manche Virenscanner schlagen bei PyInstaller-Programmen fälschlich an (Fehlalarm). Prüfe die Datei mit der `.sha256` aus dem Release (`certutil -hashfile Fluxer-Spotify.exe SHA256`) oder baue sie selbst aus dem Quellcode (siehe unten). Wer der exe nicht traut, startet einfach `python spotify_status.py`.

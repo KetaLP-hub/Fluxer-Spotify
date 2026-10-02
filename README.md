@@ -32,6 +32,27 @@ On the next start the program only asks again if a login has expired. All data l
 - **Honest note:** A program running invisibly is only transparent to a person if they know about it. That is why the setup wizard explicitly says that the program keeps running in the background and how to stop and uninstall it. Do not install it on other people's machines without their knowledge.
 - Hiding only affects the exe's own window; if you start it from an open command prompt, that stays visible (only the log goes to the file).
 
+### Android (Termux): runs while your PC is off
+
+The status is only updated while the program runs somewhere, so to keep it going with the PC off, run it on your **phone** (no server needed). This uses the source code (the exe is Windows-only) and Python's standard library, nothing to `pip install`.
+
+1. Install **Termux** and **Termux:Boot** from [F-Droid](https://f-droid.org/packages/com.termux/) (the Play Store version of Termux is outdated).
+2. In Termux: `pkg update && pkg install python git`, then `git clone https://github.com/KetaLP-hub/Fluxer-Spotify && cd Fluxer-Spotify`.
+3. **Log in on the phone itself.** A login from the PC cannot be moved: on Windows the tokens are encrypted for your Windows user.
+   - `export BROWSER=termux-open-url` (so the Spotify login opens your phone's browser), then `python spotify_status.py`. The setup asks for the Spotify Client ID, then Spotify (the browser returns to `http://127.0.0.1:8888/callback`, which is this phone, so it works), then the Fluxer e-mail and password. Optional: `python spotify_status.py github-login`.
+   - Check with `python spotify_status.py doctor`.
+4. Try it: `sh termux/start.sh` (stop with Ctrl+C). It keeps the CPU awake (`termux-wake-lock`, you get a Termux notification) and runs the program in background mode: it never asks questions, writes `fluxer-spotify.log`, and after an error such as an expired login or no network it tries again every 5 minutes.
+5. Start after a reboot: `sh termux/install-boot.sh`, then open the **Termux:Boot** app once.
+6. **Switch off the Windows autostart** (`Fluxer-Spotify.exe uninstall-autostart`) or stop the PC instance. Two instances would overwrite each other's status.
+
+Stop: `python spotify_status.py stop` (clears the status). Log: `python spotify_status.py logs`. Update: `git pull`.
+
+Things to know:
+- **Android may kill Termux to save battery.** Exclude Termux (and Termux:Boot) from battery optimization in the Android settings. Android 12 and later can also end background processes of apps like Termux (the "phantom process killer"); if the status stops after a while, search for that term for your Android version. How strict this is depends on your phone's maker.
+- Android has no DPAPI: the tokens in `state.json` are **not encrypted**, only protected by file permissions in the app's private folder. Do not copy that folder around.
+- If setup is incomplete or a login expired, the log says "Please start Fluxer-Spotify.exe normally (double-click)". On the phone that means: run `python spotify_status.py` in Termux.
+- This was written without a test on a real Android device. The scripts' logic is tested on Linux, the Android specifics (battery, Termux:Boot) are not.
+
 ### Windows warns about the file (SmartScreen / antivirus)
 
 The exe is **not code-signed** (a certificate costs money). Windows SmartScreen therefore shows "Windows protected your PC" ("More info" -> "Run anyway"), and some antivirus tools wrongly flag PyInstaller programs (false positive). Verify the file with the `.sha256` from the release (`certutil -hashfile Fluxer-Spotify.exe SHA256`) or build it yourself from source (see below). If you do not trust the exe, just run `python spotify_status.py`.
