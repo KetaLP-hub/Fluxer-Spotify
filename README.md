@@ -43,6 +43,7 @@ No DevTools, no copying tokens, no environment variables.
 - You enter e-mail and password **only in the console** (hidden, `getpass`). There is deliberately **no** option to pass the password via a flag, environment variable or file.
 - The password is sent **exactly once** to the Fluxer API (`https://api.fluxer.app/v1/auth/login`) and **stored nowhere**, not even in the log.
 - Only the **session token** is stored, in `state.json` (local, written atomically, with `0600` permissions on Linux/macOS). The token appears in no log line.
+- **On Windows the tokens inside `state.json` are encrypted with DPAPI** (built into Windows, no extra package). They can only be decrypted by your Windows user on this PC, so a copied `state.json` is useless to others. An older plaintext file is upgraded automatically on the next start. If a token cannot be decrypted (other user or PC), it is treated as logged out and you log in again. `doctor` shows whether encryption is active. On Linux/macOS there is no such backend yet, so the tokens stay plaintext and protected by file permissions only.
 - The tool creates its **own session**. You can see it in the Fluxer settings and end it there at any time. `logout` ends it as well.
 - Python cannot actively overwrite strings; the tool drops the reference right after login, and the process ends afterwards.
 - The login captcha (ALTCHA, a pure proof-of-work puzzle) is solved automatically by the tool.
@@ -148,7 +149,7 @@ Automating a **personal account** (self-bot) **may violate Fluxer's Terms of Ser
 
 ## SECURITY
 
-- `state.json` and `.env` contain secrets (tokens, webhook URL). They are in `.gitignore`; **never commit or share them**. Whoever has the session token has full access to your Fluxer account until the session is ended (`logout` or Fluxer settings).
+- `state.json` and `.env` contain secrets (tokens, webhook URL). They are in `.gitignore`; **never commit or share them**. Whoever has the session token has full access to your Fluxer account until the session is ended (`logout` or Fluxer settings). On Windows the tokens in `state.json` are encrypted, but the webhook URL and `.env` are not.
 - The tool only talks to `api.fluxer.app`, `accounts.spotify.com`, `api.spotify.com` and your webhook. `FLUXER_API` must use `https://` (exception: localhost).
 - On Windows the tool sets no NTFS permissions; the file lives in your user folder. On a shared machine, protect the folder accordingly.
 - Found a vulnerability? Please send a private note to the maintainers instead of opening a public issue.

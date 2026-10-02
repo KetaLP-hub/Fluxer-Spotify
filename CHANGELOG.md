@@ -2,6 +2,18 @@
 
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Encrypted token storage on Windows**: the Fluxer session token and the Spotify access/refresh tokens in `state.json` are now sealed with DPAPI (stdlib `ctypes`, no new dependency) and bound to your Windows user. Old plaintext files are upgraded on the next start; a token that cannot be decrypted counts as logged out. If encryption fails, the token is kept unencrypted (with a warning) instead of losing the login.
+- `doctor` shows whether the tokens are encrypted.
+
+### Fixed
+- CI on Linux: the hidden-console test imports `ctypes` before faking `os.name`.
+
+### Notes
+- Linux/macOS keep plaintext tokens with `0600` permissions; the webhook URL and `.env` are never encrypted.
+
 ## [2.1.0] - 2026-10-02
 
 ### Added
