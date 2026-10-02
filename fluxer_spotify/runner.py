@@ -2,6 +2,7 @@
 import logging
 import time
 
+from .config import TRACK_LINES
 from .errors import AuthError, bi, blog
 from .http import HttpError, NetworkError
 from .lines import STATS, Lines
@@ -10,6 +11,7 @@ from .spotify import status_text
 log = logging.getLogger("fluxer_spotify.run")
 KEEP = object()  # "leave the current status alone"
 UNSET = object()  # nothing sent yet: the first wanted status (even "clear") always goes out
+IDLE_ID = ("idle", False)  # rotation id while nothing plays at all
 
 
 def retry_wait(e, failures):
@@ -21,10 +23,10 @@ def retry_wait(e, failures):
 
 
 class Runner:
-    def __init__(self, cfg, spotify, fluxer=None, webhook=None, clock=time.time):
+    def __init__(self, cfg, spotify, fluxer=None, webhook=None, clock=time.time, github=None):
         self.cfg, self.spotify, self.fluxer, self.webhook, self.clock = cfg, spotify, fluxer, webhook, clock
         self.last_key, self.last_push, self.failures = None, 0.0, 0
-        self.lines = Lines(cfg, spotify, clock)
+        self.lines = Lines(cfg, spotify, clock, github)
         self.sent, self.hold_until, self.status_failures = UNSET, 0.0, 0  # last status Fluxer accepted; PATCH pause after errors
         self.rot_id, self.rot_start = None, 0.0  # (track, playing) the rotation belongs to, and when it began
 
@@ -32,13 +34,15 @@ class Runner:
         """The text that should be shown right now (None = clear, KEEP = leave alone). Rotates through the lines."""
         now = self.clock() if now is None else now
         if snap.item is None:
-            self.rot_id = None
-            return None  # nothing active: always clear
-        rot_id = (snap.item.get("id"), snap.playing)
+            if self.cfg.on_idle != "lines":
+                self.rot_id = None
+                return None  # nothing active: clear (default)
+            rot_id, names = IDLE_ID, [n for n in self.cfg.lines if n not in TRACK_LINES]  # keep showing what needs no track
+        else:
+            rot_id, names = (snap.item.get("id"), snap.playing), self.cfg.lines
         if rot_id != self.rot_id:  # song change / play / pause: start over, 'now' first
             self.rot_id, self.rot_start = rot_id, now
-        names = self.cfg.lines
-        if not snap.playing:
+        if snap.item is not None and not snap.playing:
             if self.cfg.on_pause != "stats":
                 return None if self.cfg.on_pause == "clear" else KEEP
             names = [n for n in names if n in STATS]

@@ -5,6 +5,9 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 ## [Unreleased]
 
 ### Added
+- **GitHub as a second status source** (optional): `github-login` connects GitHub with a read-only token (stored encrypted on Windows, validated before saving). New lines `gh_push`, `gh_commits`, `gh_prs`, `gh_reviews`, `gh_issues`, `gh_streak`, `gh_stars`, `gh_followers` and the placeholders `{gh_repo}` `{gh_ago}` `{gh_commits}` `{gh_prs}` `{gh_reviews}` `{gh_issues}` `{gh_streak}` `{gh_stars}` `{gh_followers}`. One GraphQL request, cached for 5 minutes; zero counts are hidden; only a **public** repo name is ever shown. Connecting adds `gh_push gh_commits gh_prs gh_reviews gh_issues gh_streak` unless `STATUS_LINES` is set. A revoked token, rate limit or outage only hides the GitHub lines.
+- **`--on-idle` / `ON_IDLE`** (`clear` default, or `lines`): keep rotating the lines that need no track while nothing plays at all. `ON_PAUSE=stats` now includes the GitHub lines.
+- `doctor` checks the GitHub token; `logout` deletes it locally.
 - **Encrypted token storage on Windows**: the Fluxer session token and the Spotify access/refresh tokens in `state.json` are now sealed with DPAPI (stdlib `ctypes`, no new dependency) and bound to your Windows user. Old plaintext files are upgraded on the next start; a token that cannot be decrypted counts as logged out. If encryption fails, the token is kept unencrypted (with a warning) instead of losing the login.
 - `doctor` shows whether the tokens are encrypted.
 

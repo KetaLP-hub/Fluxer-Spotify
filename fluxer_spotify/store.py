@@ -19,7 +19,8 @@ from .errors import bi, blog
 log = logging.getLogger("fluxer_spotify.store")
 SPOTIFY_KEYS = ("access", "exp", "refresh")
 FLUXER_KEYS = ("fluxer_token", "fluxer_token_source", "fluxer_user")
-SECRET_KEYS = ("fluxer_token", "access", "refresh")  # values that get sealed by a backend
+GITHUB_KEYS = ("github_token", "github_user")
+SECRET_KEYS = ("fluxer_token", "access", "refresh", "github_token")  # values that get sealed by a backend
 _DEFAULT = object()
 
 

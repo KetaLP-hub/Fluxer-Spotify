@@ -42,17 +42,18 @@ class SealedStoreTests(unittest.TestCase):
 
     def test_secrets_are_encrypted_on_disk_and_roundtrip(self):
         s = Store(self.path, backend=FakeBackend())
-        s.update(fluxer_token="flx_secret", access="acc_secret", refresh="ref_secret", client_id="cid", exp=123)
+        s.update(fluxer_token="flx_secret", access="acc_secret", refresh="ref_secret", github_token="gh_secret",
+                 client_id="cid", exp=123)
         text = self.path.read_text(encoding="utf-8")
-        for secret in ("flx_secret", "acc_secret", "ref_secret"):
+        for secret in ("flx_secret", "acc_secret", "ref_secret", "gh_secret"):
             self.assertNotIn(secret, text)
         raw = self.raw()
         for key in SECRET_KEYS:
             self.assertTrue(raw[key].startswith("fake:"), key)
         self.assertEqual((raw["client_id"], raw["exp"]), ("cid", 123))  # only secrets are sealed
         again = Store(self.path, backend=FakeBackend())
-        self.assertEqual((again.get("fluxer_token"), again.get("access"), again.get("refresh")),
-                         ("flx_secret", "acc_secret", "ref_secret"))
+        self.assertEqual((again.get("fluxer_token"), again.get("access"), again.get("refresh"), again.get("github_token")),
+                         ("flx_secret", "acc_secret", "ref_secret", "gh_secret"))
         self.assertEqual(again.protection, "Fake")
 
     def test_in_memory_value_stays_plaintext_after_save(self):

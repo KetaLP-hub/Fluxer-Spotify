@@ -1,4 +1,4 @@
-"""Command line: login, fluxer-login, fluxer-token, logout, status/doctor, run (--background), stop, logs, uninstall, autostart."""
+"""Command line: login, fluxer-login, fluxer-token, github-login, logout, status/doctor, run (--background), stop, logs, uninstall, autostart."""
 import argparse
 import getpass
 import logging
@@ -9,17 +9,18 @@ import types
 import webbrowser
 
 from . import __version__, autostart, background, log as logmod
-from .config import load_config
+from .config import GH_DEFAULT_LINES, GH_LINES, load_config
 from .errors import LANGS, AuthError, Fatal, bi, get_lang, set_lang, blog
 from .fluxer import FluxerClient, Webhook, login as fluxer_login_flow
+from .github import GitHubClient
 from .http import Http, HttpError, NetworkError
 from .runner import Runner
 from .spotify import SpotifyClient
-from .store import FLUXER_KEYS, SPOTIFY_KEYS, Store
+from .store import FLUXER_KEYS, GITHUB_KEYS, SPOTIFY_KEYS, Store
 from . import wizard
 
 log = logging.getLogger("fluxer_spotify")
-COMMANDS = ("run", "login", "fluxer-login", "fluxer-token", "logout", "status", "doctor",
+COMMANDS = ("run", "login", "fluxer-login", "fluxer-token", "github-login", "logout", "status", "doctor",
             "install-autostart", "uninstall-autostart", "stop", "logs", "uninstall")
 
 
@@ -50,11 +51,15 @@ def build_parser():
     common.add_argument("--webhook", default=S, help="optional Fluxer webhook URL (channel card)")
     common.add_argument("--template", default=S, help="text of the 'now' status line, with {title} {artist} {album}")
     common.add_argument("--lines", default=S, help="rotating status lines, comma separated (default: now,playlist,top_artist,listening_today); "
-                                                   "custom templates with {title} {artist} {album} {playlist} {top_artist} {hours} {minutes}, separated by |")
+                                                   "GitHub lines: gh_push gh_commits gh_prs gh_reviews gh_issues gh_streak gh_stars gh_followers; "
+                                                   "custom templates with {title} {artist} {album} {playlist} {top_artist} {hours} {minutes} "
+                                                   "{gh_repo} {gh_ago} {gh_commits} {gh_prs} {gh_reviews} {gh_issues} {gh_streak} {gh_stars} {gh_followers}, separated by |")
     common.add_argument("--rotate", default=S, help="seconds per status line (default 30, minimum 15)")
     common.add_argument("--no-rotate", dest="no_rotate", action="store_true", default=S, help="no rotation: only the first line")
     common.add_argument("--on-pause", dest="on_pause", choices=("clear", "keep", "stats"), default=S,
                         help="paused: clear the status, keep it, or rotate only the stats lines")
+    common.add_argument("--on-idle", dest="on_idle", choices=("clear", "lines"), default=S,
+                        help="nothing playing at all: clear the status (default) or keep rotating the lines that need no track (GitHub, stats)")
     common.add_argument("--interval", default=S, help="poll interval in seconds (min 2)")
     p = argparse.ArgumentParser(prog="spotify_status.py", parents=[common],
                                 description="Mirror Spotify 'now playing' into your Fluxer custom status.")
@@ -63,6 +68,7 @@ def build_parser():
     helps = {"run": "start mirroring (default)", "login": "log in to Spotify (browser, once)",
              "fluxer-login": "log in to Fluxer with e-mail + password (token is stored, password is not)",
              "fluxer-token": "fallback: paste a Fluxer token from the browser",
+             "github-login": "optional: connect GitHub with a read-only token (adds GitHub status lines)",
              "logout": "clear the status and delete stored tokens", "status": "check setup and logins",
              "doctor": "same as status", "install-autostart": "start with Windows",
              "uninstall-autostart": "remove the Windows autostart entry",
@@ -146,7 +152,7 @@ def _main(argv, http, getpass_fn, input_fn):
         if bg:
             ctx.open_browser = _no_prompt
         return {"run": ctx.run, "login": ctx.spotify_login, "fluxer-login": lambda: ctx.fluxer_login(args),
-                "fluxer-token": ctx.fluxer_token, "logout": lambda: ctx.logout(args), "status": ctx.doctor,
+                "fluxer-token": ctx.fluxer_token, "github-login": ctx.github_login, "logout": lambda: ctx.logout(args), "status": ctx.doctor,
                 "doctor": ctx.doctor, "install-autostart": lambda: ctx.autostart(True),
                 "uninstall-autostart": lambda: ctx.autostart(False), "stop": ctx.stop, "logs": ctx.logs,
                 "uninstall": ctx.uninstall}[command]() or 0
@@ -170,6 +176,8 @@ class Ctx:
             cfg.client_id = self.store.get("client_id", "")
         if not cfg.language and self.store.get("language") in LANGS:
             cfg.language = self.store.get("language")
+        if self.store.get("github_token") and not cfg.lines_explicit:  # connecting GitHub is the opt-in for its lines
+            cfg.lines = cfg.lines + tuple(n for n in GH_DEFAULT_LINES if n not in cfg.lines)
 
     # --- builders
     def spotify(self):
@@ -177,6 +185,10 @@ class Ctx:
             raise Fatal(bi("Spotify Client ID fehlt. Starte das Programm ohne Zusatz (run), dann fragt es danach.",
                            "Spotify Client ID is missing. Start the program without arguments (run) and it will ask for it."))
         return SpotifyClient(self.http, self.store, self.cfg.client_id)
+
+    def github(self):
+        token = self.store.get("github_token")
+        return GitHubClient(self.http, token) if token else None
 
     def fluxer(self):
         token, source = self.store.fluxer_token(self.cfg)
@@ -221,6 +233,29 @@ class Ctx:
         self.store.update(fluxer_token=token, fluxer_token_source="manual", fluxer_user=me.get("username"))
         print(bi(f"Token gueltig ({me.get('username', '?')}) und gespeichert.", f"Token valid ({me.get('username', '?')}) and stored."))
 
+    def github_login(self):
+        print(bi("GitHub verbinden (optional). Das Tool braucht nur LESE-Rechte.\n"
+                 "  1. Oeffne https://github.com/settings/personal-access-tokens/new und erstelle einen 'Fine-grained token'.\n"
+                 "  2. Repository access: 'Public repositories' reicht fuer oeffentliche Daten. Fuer Zaehler aus privaten Repos\n"
+                 "     (offene PRs, Reviews, Issues): 'All repositories' mit den Rechten 'Pull requests: Read' und 'Issues: Read'.\n"
+                 "  3. Gib dem Token keine Schreibrechte. Er wird verschluesselt gespeichert (Windows), die Eingabe ist unsichtbar.",
+                 "Connect GitHub (optional). The tool only needs READ access.\n"
+                 "  1. Open https://github.com/settings/personal-access-tokens/new and create a 'Fine-grained token'.\n"
+                 "  2. Repository access: 'Public repositories' is enough for public data. For counts from private repos\n"
+                 "     (open PRs, reviews, issues): 'All repositories' with 'Pull requests: Read' and 'Issues: Read'.\n"
+                 "  3. Give the token no write permissions. It is stored encrypted (Windows); the input is hidden."))
+        token = self.getpass(bi("GitHub-Token: ", "GitHub token: ")).strip().strip("\"'")
+        if not token:
+            raise Fatal(bi("Kein Token eingegeben.", "No token entered."))
+        logmod.add_secret(token)
+        login = GitHubClient(self.http, token).me()  # validates before storing; raises AuthError on a bad token
+        self.store.update(github_token=token, github_user=login)
+        print(bi(f"GitHub verbunden als {login}. Nur der Token wurde gespeichert.", f"GitHub connected as {login}. Only the token was stored."))
+        print(bi("Die GitHub-Zeilen laufen jetzt in der Rotation mit (wenn du STATUS_LINES nicht selbst gesetzt hast).\n"
+                 "Tipp: ON_IDLE=lines zeigt sie auch, wenn gerade keine Musik laeuft. Zum Entfernen: logout oder den Token auf GitHub loeschen.",
+                 "The GitHub lines now join the rotation (unless you set STATUS_LINES yourself).\n"
+                 "Tip: ON_IDLE=lines keeps showing them while no music plays. To remove: logout, or delete the token on GitHub."))
+
     def logout(self, args):
         fx = self.fluxer()
         if fx:
@@ -235,8 +270,12 @@ class Ctx:
                     print(bi("Fluxer-Sitzung beendet.", "Fluxer session revoked."))
                 except (Fatal, HttpError, NetworkError) as e:
                     log.warning(blog("Sitzung konnte nicht beendet werden: %s", "Could not revoke session: %s", e))
-        self.store.clear(FLUXER_KEYS + (() if args.keep_spotify else SPOTIFY_KEYS))
+        had_github = bool(self.store.get("github_token"))
+        self.store.clear(FLUXER_KEYS + GITHUB_KEYS + (() if args.keep_spotify else SPOTIFY_KEYS))
         print(bi("Gespeicherte Tokens geloescht.", "Stored tokens deleted."))
+        if had_github:
+            print(bi("Der GitHub-Token wurde nur lokal geloescht. Zum Widerrufen: https://github.com/settings/personal-access-tokens",
+                     "The GitHub token was only deleted locally. To revoke it: https://github.com/settings/personal-access-tokens"))
         if self.cfg.fluxer_token:
             print(bi("FLUXER_TOKEN in .env/Umgebung bleibt bestehen (dein Browser-Token, wird nicht widerrufen). Entferne ihn von Hand.",
                      "FLUXER_TOKEN in .env/environment stays (it is your browser token, not revoked). Remove it by hand."))
@@ -285,12 +324,28 @@ class Ctx:
                  "No Fluxer token" + (" (webhook-only operation)" if self.cfg.webhook else ""))
             if not self.cfg.webhook:
                 print("         " + fix("fluxer-login"))
+        gh = self.github()
+        wants_gh = any(n in GH_LINES or "{gh_" in n for n in self.cfg.lines)
+        if gh:
+            try:
+                login = gh.me()
+                line(True, f"GitHub-Token gueltig: {login}", f"GitHub token valid: {login}")
+            except AuthError as e:
+                line(False, str(e).split("\n")[0], fix("github-login"))
+            except (HttpError, NetworkError) as e:
+                line(False, f"GitHub nicht erreichbar: {e}", f"GitHub unreachable: {e}")
+        else:
+            line(False if wants_gh else None,
+                 "GitHub-Zeilen sind aktiv, aber GitHub ist nicht verbunden" if wants_gh else "GitHub nicht verbunden (optional): github-login",
+                 "GitHub lines are enabled but GitHub is not connected" if wants_gh else "GitHub not connected (optional): github-login")
+            if wants_gh:
+                print("         " + fix("github-login"))
         prot = self.store.protection
         line(True if prot else None,
              f"Tokens in state.json verschluesselt ({prot})" if prot else "Tokens liegen unverschluesselt in state.json (nur Dateirechte); sichere Speicherung gibt es nur unter Windows",
              f"Tokens in state.json are encrypted ({prot})" if prot else "Tokens are stored unencrypted in state.json (file permissions only); secure storage is Windows-only")
-        line(None, f"Webhook: {'konfiguriert' if self.cfg.webhook else 'nicht gesetzt'}; Template: {self.cfg.template}; Pause: {self.cfg.on_pause}",
-             f"Webhook: {'configured' if self.cfg.webhook else 'not set'}; template: {self.cfg.template}; pause: {self.cfg.on_pause}")
+        line(None, f"Webhook: {'konfiguriert' if self.cfg.webhook else 'nicht gesetzt'}; Template: {self.cfg.template}; Pause: {self.cfg.on_pause}; Leerlauf: {self.cfg.on_idle}",
+             f"Webhook: {'configured' if self.cfg.webhook else 'not set'}; template: {self.cfg.template}; pause: {self.cfg.on_pause}; idle: {self.cfg.on_idle}")
         line(None, f"Status-Zeilen: {', '.join(self.cfg.lines)}; " + ("keine Rotation" if self.cfg.no_rotate else f"Rotation alle {self.cfg.rotate:g} s"),
              f"Status lines: {', '.join(self.cfg.lines)}; " + ("no rotation" if self.cfg.no_rotate else f"rotation every {self.cfg.rotate:g} s"))
         pid = background.running_pid(self.cfg.data_dir)
@@ -357,7 +412,7 @@ class Ctx:
         if not (fx or hook):
             raise Fatal(bi("Kein Fluxer-Login. Erst ausfuehren: python spotify_status.py fluxer-login",
                            "No Fluxer login. Run first: python spotify_status.py fluxer-login"))
-        runner = Runner(self.cfg, sp, fx, hook)
+        runner = Runner(self.cfg, sp, fx, hook, github=self.github())
         for name in ("SIGTERM", "SIGBREAK"):
             if hasattr(signal, name):
                 signal.signal(getattr(signal, name), _sigterm)
@@ -380,7 +435,7 @@ class Ctx:
         if self._lock:
             self._lock.release()
         cfg = self.cfg
-        extra = ["--template", cfg.template, "--on-pause", cfg.on_pause, "--interval", str(cfg.interval), "--api", cfg.api,
+        extra = ["--template", cfg.template, "--on-pause", cfg.on_pause, "--on-idle", cfg.on_idle, "--interval", str(cfg.interval), "--api", cfg.api,
                  "--lines", "|".join(cfg.lines), "--rotate", str(cfg.rotate), "--lang", cfg.lang] + (["--no-rotate"] if cfg.no_rotate else [])
         try:
             pid = background.spawn_background(cfg.data_dir, extra)
