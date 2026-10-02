@@ -10,6 +10,7 @@ from pathlib import Path
 from fluxer_spotify import cli, log as logmod
 from fluxer_spotify.errors import AuthError, LoginError
 from fluxer_spotify.fluxer import FluxerClient, login, solve_altcha
+from fluxer_spotify.store import Store
 from tests.helpers import CAPTCHA_ERR, altcha_challenge, make_http
 
 API = "https://api.example/v1"
@@ -174,9 +175,10 @@ class CliLogin(unittest.TestCase):
             finally:
                 logmod.setup = real_setup
             self.assertEqual(rc, 0)
-            state = (Path(d) / "state.json").read_text()
-            self.assertEqual(json.loads(state)["fluxer_token"], token)
-            self.assertEqual(json.loads(state)["fluxer_token_source"], "login")
+            state = (Path(d) / "state.json").read_text()  # raw file: leak checks below look at what is really on disk
+            stored = Store(Path(d) / "state.json")  # decrypted view (the token may be sealed, Windows DPAPI)
+            self.assertEqual(stored.get("fluxer_token"), token)
+            self.assertEqual(stored.get("fluxer_token_source"), "login")
             for blob in (state, buf.getvalue(), out.getvalue()):
                 self.assertNotIn(pw, blob)
             self.assertNotIn(token, buf.getvalue() + out.getvalue())

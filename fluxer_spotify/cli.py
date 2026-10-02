@@ -285,6 +285,10 @@ class Ctx:
                  "No Fluxer token" + (" (webhook-only operation)" if self.cfg.webhook else ""))
             if not self.cfg.webhook:
                 print("         " + fix("fluxer-login"))
+        prot = self.store.protection
+        line(True if prot else None,
+             f"Tokens in state.json verschluesselt ({prot})" if prot else "Tokens liegen unverschluesselt in state.json (nur Dateirechte); sichere Speicherung gibt es nur unter Windows",
+             f"Tokens in state.json are encrypted ({prot})" if prot else "Tokens are stored unencrypted in state.json (file permissions only); secure storage is Windows-only")
         line(None, f"Webhook: {'konfiguriert' if self.cfg.webhook else 'nicht gesetzt'}; Template: {self.cfg.template}; Pause: {self.cfg.on_pause}",
              f"Webhook: {'configured' if self.cfg.webhook else 'not set'}; template: {self.cfg.template}; pause: {self.cfg.on_pause}")
         line(None, f"Status-Zeilen: {', '.join(self.cfg.lines)}; " + ("keine Rotation" if self.cfg.no_rotate else f"Rotation alle {self.cfg.rotate:g} s"),

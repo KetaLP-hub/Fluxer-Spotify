@@ -11,6 +11,7 @@ from unittest import mock
 from fluxer_spotify import autostart, background, cli, config, wizard
 from fluxer_spotify.config import Config, load_config
 from fluxer_spotify.errors import AuthError, Fatal, set_lang
+from fluxer_spotify.store import Store
 from tests.helpers import make_http
 
 CID = "0123456789abcdef0123456789ABCDEF"
@@ -64,7 +65,7 @@ class WizardCase(unittest.TestCase):
         return out.getvalue()
 
     def state(self):
-        return json.loads((self.d / "state.json").read_text())
+        return Store(self.d / "state.json").data  # decrypted view: tokens may be sealed on disk (Windows DPAPI)
 
     def done_state(self, **extra):
         (self.d / "state.json").write_text(json.dumps({"client_id": CID, "refresh": "rr", "fluxer_token": TOKEN,

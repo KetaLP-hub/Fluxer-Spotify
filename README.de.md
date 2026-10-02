@@ -43,6 +43,7 @@ Kein DevTools, kein Token-Kopieren, keine Umgebungsvariablen.
 - Du gibst E-Mail und Passwort **nur in der Konsole** ein (unsichtbar, `getpass`). Es gibt bewusst **keine** Option, das Passwort per Flag, Umgebungsvariable oder Datei zu übergeben.
 - Das Passwort wird **genau einmal** an die Fluxer-API (`https://api.fluxer.app/v1/auth/login`) gesendet und **nirgends gespeichert**, auch nicht im Log.
 - Gespeichert wird nur der **Session-Token** in `state.json` (lokal, atomar geschrieben, unter Linux/macOS mit Rechten `0600`). Der Token erscheint in keiner Log-Zeile.
+- **Unter Windows sind die Tokens in `state.json` mit DPAPI verschlüsselt** (in Windows eingebaut, kein Zusatzpaket). Sie lassen sich nur von deinem Windows-Benutzer auf diesem PC entschlüsseln, eine kopierte `state.json` nützt anderen nichts. Eine ältere Klartext-Datei wird beim nächsten Start automatisch umgestellt. Lässt sich ein Token nicht entschlüsseln (anderer Benutzer oder PC), gilt es als abgemeldet und du meldest dich neu an. `doctor` zeigt, ob die Verschlüsselung aktiv ist. Unter Linux/macOS gibt es noch kein solches Verfahren, dort bleiben die Tokens im Klartext und nur durch Dateirechte geschützt.
 - Das Tool legt eine **eigene Sitzung** an. Du siehst sie in den Fluxer-Einstellungen und kannst sie dort jederzeit beenden. `logout` beendet sie ebenfalls.
 - Python kann Strings nicht aktiv überschreiben; das Tool verwirft die Referenz sofort nach dem Login, der Prozess endet danach.
 - Das Captcha beim Login (ALTCHA, eine reine Rechenaufgabe) löst das Tool automatisch.
@@ -144,7 +145,7 @@ Das Automatisieren eines **persönlichen Accounts** (Self-Bot) **kann gegen die 
 
 ## SECURITY
 
-- `state.json` und `.env` enthalten Geheimnisse (Tokens, Webhook-URL). Sie stehen in `.gitignore`, **nie committen oder teilen**. Wer den Session-Token hat, hat vollen Zugriff auf deinen Fluxer-Account, bis die Sitzung beendet wird (`logout` oder Fluxer-Einstellungen).
+- `state.json` und `.env` enthalten Geheimnisse (Tokens, Webhook-URL). Sie stehen in `.gitignore`, **nie committen oder teilen**. Wer den Session-Token hat, hat vollen Zugriff auf deinen Fluxer-Account, bis die Sitzung beendet wird (`logout` oder Fluxer-Einstellungen). Unter Windows sind die Tokens in `state.json` verschlüsselt, die Webhook-URL und `.env` aber nicht.
 - Das Tool spricht nur mit `api.fluxer.app`, `accounts.spotify.com`, `api.spotify.com` und deinem Webhook. `FLUXER_API` muss `https://` nutzen (Ausnahme: localhost).
 - Auf Windows setzt das Tool keine NTFS-Rechte; die Datei liegt in deinem Benutzerordner. Auf einem geteilten Rechner den Ordner entsprechend schützen.
 - Sicherheitslücke gefunden? Bitte einen privaten Hinweis an die Maintainer statt eines öffentlichen Issues.
