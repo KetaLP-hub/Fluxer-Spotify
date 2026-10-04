@@ -1,4 +1,4 @@
-"""Background (hidden) mode: console hiding, single-instance pid lock, stop request, detached self-spawn, notices.
+﻿"""Background (hidden) mode: console hiding, single-instance pid lock, stop request, detached self-spawn, notices.
 
 Windows bits use stdlib ctypes only. Everything OS-specific is isolated in small functions so tests can mock it.
 """
@@ -184,7 +184,7 @@ def is_ours(pid, image=None):
     if os.name == "nt":
         name = PureWindowsPath(img).name.lower()
         own = {PROCESS_NAME.lower(), PureWindowsPath(sys.executable).name.lower()}
-        return name in own or name in ("python.exe", "pythonw.exe", "py.exe")  # the latter: running from source
+        return name in own or name.startswith("python") or name == "py.exe"  # the latter: running from source (also Store python3.13.exe)
     return "fluxer_spotify" in img or "spotify_status" in img
 
 
