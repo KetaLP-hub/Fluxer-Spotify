@@ -205,8 +205,14 @@ class FluxerClient:
     def me(self):
         return self._call("GET", "/users/@me")
 
-    def set_status(self, text):
-        return self._call("PATCH", "/users/@me/settings", {"custom_status": {"text": text} if text else None})
+    def set_status(self, text, ttl=None, clock=time.time):
+        """Set (or clear, text=None) the custom status. `ttl` seconds: Fluxer clears it by itself after that time (expires_at)."""
+        status = None
+        if text:
+            status = {"text": text}
+            if ttl:
+                status["expires_at"] = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(clock() + ttl))
+        return self._call("PATCH", "/users/@me/settings", {"custom_status": status})
 
     def logout(self):
         """Revoke this session. Only call for tokens created by fluxer-login."""

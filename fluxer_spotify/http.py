@@ -48,10 +48,29 @@ class HttpError(Exception):
         return None
 
 
+class _SameOriginRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to the same scheme and host.
+
+    urllib keeps every request header on a redirect, including `Authorization`: a redirect to another host would hand over the
+    Spotify/GitHub/Fluxer token. None of the APIs we call needs such a redirect, so anything else is simply not followed
+    (the 3xx then surfaces as an HttpError).
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urllib.parse.urljoin(req.full_url, newurl)  # a relative Location resolves against the request URL
+        old, new = urllib.parse.urlparse(req.full_url), urllib.parse.urlparse(target)
+        if (old.scheme, old.netloc.lower()) != (new.scheme, new.netloc.lower()):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, target)
+
+
+_opener = urllib.request.build_opener(_SameOriginRedirect)
+
+
 def default_transport(method, url, headers, body, timeout):
     req = urllib.request.Request(url, body, headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with _opener.open(req, timeout=timeout) as r:
             return Response(r.status, {k.lower(): v for k, v in r.headers.items()}, r.read())
     except urllib.error.HTTPError as e:
         return Response(e.code, {k.lower(): v for k, v in e.headers.items()}, e.read())
@@ -103,7 +122,7 @@ class Http:
                 self.sleep(delay)
                 continue
             log.debug("%s %s -> %s", method, _loc(url), resp.status)
-            if resp.status < 400:
+            if resp.status < 300:
                 return json.loads(resp.body) if resp.body.strip() else {}
             try:
                 body = json.loads(resp.body)

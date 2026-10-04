@@ -8,7 +8,7 @@ import time
 import types
 import webbrowser
 
-from . import __version__, autostart, background, log as logmod
+from . import __version__, autostart, background, github as github_mod, log as logmod
 from .config import GH_DEFAULT_LINES, GH_LINES, load_config
 from .errors import LANGS, AuthError, Fatal, bi, get_lang, set_lang, blog
 from .fluxer import FluxerClient, Webhook, login as fluxer_login_flow
@@ -20,7 +20,7 @@ from .store import FLUXER_KEYS, GITHUB_KEYS, SPOTIFY_KEYS, Store
 from . import wizard
 
 log = logging.getLogger("fluxer_spotify")
-COMMANDS = ("run", "login", "fluxer-login", "fluxer-token", "github-login", "logout", "status", "doctor",
+COMMANDS = ("run", "gui", "login", "fluxer-login", "fluxer-token", "github-login", "logout", "status", "doctor",
             "install-autostart", "uninstall-autostart", "stop", "logs", "uninstall")
 
 
@@ -61,11 +61,13 @@ def build_parser():
     common.add_argument("--on-idle", dest="on_idle", choices=("clear", "lines"), default=S,
                         help="nothing playing at all: clear the status (default) or keep rotating the lines that need no track (GitHub, stats)")
     common.add_argument("--interval", default=S, help="poll interval in seconds (min 2)")
+    common.add_argument("--ttl", default=S, help="status lifetime in seconds: Fluxer clears it by itself after that (default 0 = off; min 120)")
     p = argparse.ArgumentParser(prog="spotify_status.py", parents=[common],
                                 description="Mirror Spotify 'now playing' into your Fluxer custom status.")
     p.add_argument("--version", action="version", version=__version__)
+    p.add_argument("--selftest", action="store_true", help=argparse.SUPPRESS)  # CI: does the packaged exe start (GUI toolkit present)?
     sub = p.add_subparsers(dest="command", metavar="command")
-    helps = {"run": "start mirroring (default)", "login": "log in to Spotify (browser, once)",
+    helps = {"run": "start mirroring (default)", "gui": "open the launcher window (default for the exe)", "login": "log in to Spotify (browser, once)",
              "fluxer-login": "log in to Fluxer with e-mail + password (token is stored, password is not)",
              "fluxer-token": "fallback: paste a Fluxer token from the browser",
              "github-login": "optional: connect GitHub with a read-only token (adds GitHub status lines)",
@@ -90,23 +92,20 @@ def _sigterm(*_):
 def entry():
     """Console entry point. As a frozen exe the window would vanish on errors, so wait for Enter."""
     frozen = getattr(sys, "frozen", False)
+    argv = sys.argv[1:]
+    if frozen and argv and sys.stdout is None:
+        background.attach_parent_console()  # the exe is a windowed program: show its output in the terminal it was started from
     try:
-        rc = main(keep_lang=True)
+        # Double-click (no arguments): the exe opens the launcher window. Source runs keep the console wizard (`gui` opens the window).
+        rc = main(["gui"] if frozen and not argv else None, keep_lang=True)
     except Exception:
         import traceback
         traceback.print_exc()
         log.exception(bi("Absturz", "crash", " / "))  # background mode has no console: the log file is the only trace
         rc = 1
-    if frozen and rc not in (0, 130) and not _background_requested():
-        try:
-            input("\n" + bi("Druecke Enter zum Schliessen.", "Press Enter to close.", " / ") + " ")
-        except (EOFError, KeyboardInterrupt):
-            pass
+    # No "press Enter" pause any more: the exe is a windowed program (no console window that could vanish). Errors of a double-click
+    # start appear in a message box; with arguments they stay in the terminal the exe was started from.
     return rc
-
-
-def _background_requested():
-    return any(a in ("--background", "--hidden") for a in sys.argv[1:])
 
 
 def main(argv=None, http=None, getpass_fn=getpass.getpass, input_fn=input, keep_lang=False):
@@ -125,7 +124,11 @@ def _main(argv, http, getpass_fn, input_fn):
             stream.reconfigure(errors="replace")
         except Exception:
             pass
+    if sys.stdout is None or sys.stderr is None:  # windowed exe without a terminal
+        background.fix_streams()
     args = build_parser().parse_args(argv)
+    if getattr(args, "selftest", False):
+        return selftest()
     early = str(getattr(args, "language", "")).lower()
     set_lang(early if early in LANGS else None)  # so even config errors use the language given on the command line
     command = args.command or "run"
@@ -151,7 +154,7 @@ def _main(argv, http, getpass_fn, input_fn):
         set_lang(cfg.lang)
         if bg:
             ctx.open_browser = _no_prompt
-        return {"run": ctx.run, "login": ctx.spotify_login, "fluxer-login": lambda: ctx.fluxer_login(args),
+        return {"run": ctx.run, "gui": ctx.gui, "login": ctx.spotify_login, "fluxer-login": lambda: ctx.fluxer_login(args),
                 "fluxer-token": ctx.fluxer_token, "github-login": ctx.github_login, "logout": lambda: ctx.logout(args), "status": ctx.doctor,
                 "doctor": ctx.doctor, "install-autostart": lambda: ctx.autostart(True),
                 "uninstall-autostart": lambda: ctx.autostart(False), "stop": ctx.stop, "logs": ctx.logs,
@@ -165,6 +168,21 @@ def _main(argv, http, getpass_fn, input_fn):
     except KeyboardInterrupt:
         print("\n" + bi("Abgebrochen.", "Cancelled.", " / "), file=sys.stderr)
         return 130
+
+
+def selftest():
+    """Smoke test of a packaged exe (run by the release workflow): can the launcher's GUI toolkit start? 0 = fine."""
+    try:
+        import tkinter
+        root = tkinter.Tk()
+        root.withdraw()
+        root.update_idletasks()
+        root.destroy()
+    except Exception as e:  # missing Tcl/Tk files in the bundle, no display, ...
+        print(f"selftest FAILED: tkinter: {e}", file=sys.stderr)
+        return 1
+    print(f"selftest ok ({__version__})")
+    return 0
 
 
 class Ctx:
@@ -234,22 +252,24 @@ class Ctx:
         print(bi(f"Token gueltig ({me.get('username', '?')}) und gespeichert.", f"Token valid ({me.get('username', '?')}) and stored."))
 
     def github_login(self):
+        url = github_mod.token_page_url()
         print(bi("GitHub verbinden (optional). Das Tool braucht nur LESE-Rechte.\n"
-                 "  1. Oeffne https://github.com/settings/personal-access-tokens/new und erstelle einen 'Fine-grained token'.\n"
+                 f"  1. Oeffne {url} (Name, Laufzeit und die beiden Lese-Rechte sind schon eingetragen) und klicke 'Generate token'.\n"
                  "  2. Repository access: 'Public repositories' reicht fuer oeffentliche Daten. Fuer Zaehler aus privaten Repos\n"
                  "     (offene PRs, Reviews, Issues): 'All repositories' mit den Rechten 'Pull requests: Read' und 'Issues: Read'.\n"
                  "  3. Gib dem Token keine Schreibrechte. Er wird verschluesselt gespeichert (Windows), die Eingabe ist unsichtbar.",
                  "Connect GitHub (optional). The tool only needs READ access.\n"
-                 "  1. Open https://github.com/settings/personal-access-tokens/new and create a 'Fine-grained token'.\n"
+                 f"  1. Open {url} (name, lifetime and the two read permissions are pre-filled) and click 'Generate token'.\n"
                  "  2. Repository access: 'Public repositories' is enough for public data. For counts from private repos\n"
                  "     (open PRs, reviews, issues): 'All repositories' with 'Pull requests: Read' and 'Issues: Read'.\n"
                  "  3. Give the token no write permissions. It is stored encrypted (Windows); the input is hidden."))
+        try:
+            self.open_browser(url)
+        except Exception:
+            pass  # the URL is printed above anyway
         token = self.getpass(bi("GitHub-Token: ", "GitHub token: ")).strip().strip("\"'")
-        if not token:
-            raise Fatal(bi("Kein Token eingegeben.", "No token entered."))
         logmod.add_secret(token)
-        login = GitHubClient(self.http, token).me()  # validates before storing; raises AuthError on a bad token
-        self.store.update(github_token=token, github_user=login)
+        login = github_mod.connect(self.http, self.store, token)  # validates before storing; raises AuthError on a bad token
         print(bi(f"GitHub verbunden als {login}. Nur der Token wurde gespeichert.", f"GitHub connected as {login}. Only the token was stored."))
         print(bi("Die GitHub-Zeilen laufen jetzt in der Rotation mit (wenn du STATUS_LINES nicht selbst gesetzt hast).\n"
                  "Tipp: ON_IDLE=lines zeigt sie auch, wenn gerade keine Musik laeuft. Zum Entfernen: logout oder den Token auf GitHub loeschen.",
@@ -358,9 +378,9 @@ class Ctx:
 
     def autostart(self, install):
         if install:
-            path = autostart.install(self.cfg.data_dir)
-            print(bi(f"Autostart eingerichtet (startet unsichtbar im Hintergrund): {path}\nLog: {self.cfg.data_dir / background.LOG_NAME}",
-                     f"Autostart installed (starts hidden in the background): {path}\nLog: {self.cfg.data_dir / background.LOG_NAME}"))
+            where = autostart.install(self.cfg.data_dir)
+            print(bi(f"Autostart eingerichtet (startet unsichtbar im Hintergrund, siehe Task-Manager > Autostart): {where}\nLog: {self.cfg.data_dir / background.LOG_NAME}",
+                     f"Autostart installed (starts hidden in the background, see Task Manager > Startup apps): {where}\nLog: {self.cfg.data_dir / background.LOG_NAME}"))
         else:
             t = autostart.uninstall()
             print(bi("Autostart entfernt.", "Autostart removed.") if t else bi("Kein Autostart gefunden.", "No autostart entry found."))
@@ -422,7 +442,11 @@ class Ctx:
         log.info(blog("Laeuft%s. Strg+C bzw. 'stop' beendet und loescht den Status.",
                      "Running%s. Ctrl+C or 'stop' ends it and clears the status.", *where))
         try:
-            runner.run(sleep=background.make_stop_sleep(self.cfg.data_dir, stop_exc=Stop))
+            sleep = background.make_stop_sleep(self.cfg.data_dir, stop_exc=Stop)
+            if self.background:
+                self._supervise(runner, sleep)
+            else:
+                runner.run(sleep=sleep)
         except (KeyboardInterrupt, Stop):
             print("\n" + bi("Beendet.", "Stopped.", " / "))
             log.info(bi("Beendet.", "Stopped.", " / "))
@@ -430,13 +454,36 @@ class Ctx:
             runner.shutdown()
         return 0
 
+    def _supervise(self, runner, sleep, clock=time.monotonic):
+        """24/7 mode: an unexpected error (a bug, an odd API answer) must not end the run. Log it, wait, carry on.
+
+        Anything that needs the user (a login that stopped working -> Fatal/AuthError) and every stop request still end it.
+        """
+        failures, began = 0, clock()
+        while True:
+            try:
+                runner.run(sleep=sleep)
+            except (KeyboardInterrupt, Stop, Fatal):
+                raise
+            except Exception:
+                log.exception(bi("Unerwarteter Fehler, mache weiter", "Unexpected error, carrying on", " / "))
+                if clock() - began > 600:  # it had been running fine for a while: start the back-off over
+                    failures = 0
+                failures += 1
+                sleep(min(300, 15 * 2 ** (failures - 1)))
+                began = clock()
+
+    def gui(self):
+        from . import ui  # tkinter is only needed here
+        return ui.run(self.cfg, self.http)
+
     def start_background(self):
         """Wizard hand-over: free the lock, start a hidden copy of ourselves, True once it is up."""
         if self._lock:
             self._lock.release()
         cfg = self.cfg
         extra = ["--template", cfg.template, "--on-pause", cfg.on_pause, "--on-idle", cfg.on_idle, "--interval", str(cfg.interval), "--api", cfg.api,
-                 "--lines", "|".join(cfg.lines), "--rotate", str(cfg.rotate), "--lang", cfg.lang] + (["--no-rotate"] if cfg.no_rotate else [])
+                 "--lines", "|".join(cfg.lines), "--rotate", str(cfg.rotate), "--lang", cfg.lang, "--ttl", str(cfg.ttl)] + (["--no-rotate"] if cfg.no_rotate else [])
         try:
             pid = background.spawn_background(cfg.data_dir, extra)
         except OSError as e:
@@ -465,6 +512,11 @@ class Ctx:
             print(bi("Es laeuft keine Instanz.", "No instance is running."))
         elif res == "clean":
             print(bi("Instanz beendet, Fluxer-Status geloescht.", "Instance stopped, Fluxer status cleared."))
+        elif res == "unresponsive":
+            print(bi("Instanz reagierte nicht, und es ist nicht sicher, dass die PID noch zu diesem Programm gehoert - nichts wurde beendet.\n"
+                     "Beende \"Fluxer-Spotify.exe\" bei Bedarf im Task-Manager.",
+                     "The instance did not respond and it is not certain the PID still belongs to this program - nothing was terminated.\n"
+                     "End \"Fluxer-Spotify.exe\" in Task Manager if needed."))
         else:
             print(bi("Instanz reagierte nicht und wurde hart beendet.", "Instance did not respond and was terminated."))
             fx = self.fluxer()

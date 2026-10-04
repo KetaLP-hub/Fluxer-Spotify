@@ -5,15 +5,30 @@ to PUBLIC repositories (a private repo name must never end up in a public status
 """
 import logging
 import time
+import urllib.parse
 from datetime import datetime, timezone
 
-from .errors import AuthError, bi
+from .errors import AuthError, Fatal, bi
 from .http import HttpError, NetworkError
+from .store import GITHUB_KEYS
 
 log = logging.getLogger("fluxer_spotify.github")
 API = "https://api.github.com"
 GRAPHQL = API + "/graphql"
 HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+TOKEN_PAGE = "https://github.com/settings/personal-access-tokens/new"
+TOKEN_REVOKE_PAGE = "https://github.com/settings/personal-access-tokens"
+
+
+def token_page_url():
+    """GitHub's fine-grained token page with name, lifetime and the only two permissions we need (read) already filled in.
+
+    GitHub documents these URL parameters. The user still reviews the page and clicks "Generate token" himself.
+    "Repository access" stays on GitHub's default (public repositories); choosing "All repositories" there adds the counts of private repos.
+    """
+    return TOKEN_PAGE + "?" + urllib.parse.urlencode({
+        "name": "Fluxer-Spotify", "description": "Read-only: GitHub lines in the Fluxer status",
+        "expires_in": "365", "pull_requests": "read", "issues": "read"})
 QUERY = """
 query {
   viewer {
@@ -97,6 +112,21 @@ def parse_stats(data, until=None):
         "stars": sum(s for s in stars if s) if stars else None,  # the 100 most starred own repos: a lower bound beyond that
         "followers": _num(viewer, "followers", "totalCount"),
     }
+
+
+def connect(http, store, token):
+    """Check a token (read-only call) and keep it. Returns the account's login. Raises AuthError for a rejected token."""
+    token = (token or "").strip().strip("\"'")
+    if not token:
+        raise Fatal(bi("Kein Token eingegeben.", "No token entered."))
+    login = GitHubClient(http, token).me()  # validates before storing
+    store.update(github_token=token, github_user=login)
+    return login
+
+
+def disconnect(store):
+    """Forget the token locally. (Revoking it on GitHub has to happen there: TOKEN_REVOKE_PAGE.)"""
+    store.clear(GITHUB_KEYS)
 
 
 class GitHubClient:

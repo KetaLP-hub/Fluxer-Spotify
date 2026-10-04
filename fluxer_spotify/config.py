@@ -20,13 +20,14 @@ LINE_NAMES = DEFAULT_LINES + GH_LINES
 TRACK_LINES = ("now", "playlist")  # lines that need a current track; every other line also works while nothing plays
 LINE_FIELDS = ("title", "artist", "album", "playlist", "top_artist", "hours", "minutes") + GH_FIELDS  # allowed in custom lines
 MIN_ROTATE = 15.0  # hard floor: every rotation step is one PATCH to Fluxer
+MIN_TTL, MAX_TTL = 120.0, 86400.0  # status expiry in seconds (0 = off)
 ON_PAUSE_MODES = ("clear", "keep", "stats")
 ON_IDLE_MODES = ("clear", "lines")
 _log = logging.getLogger("fluxer_spotify.config")
 ENV_KEYS = {  # attribute -> environment variable
     "client_id": "SPOTIFY_CLIENT_ID", "fluxer_token": "FLUXER_TOKEN", "webhook": "FLUXER_WEBHOOK",
     "api": "FLUXER_API", "template": "STATUS_TEMPLATE", "on_pause": "ON_PAUSE", "on_idle": "ON_IDLE", "interval": "POLL_INTERVAL",
-    "lines": "STATUS_LINES", "rotate": "ROTATE_SECONDS", "no_rotate": "NO_ROTATE", "language": "LANGUAGE",
+    "lines": "STATUS_LINES", "rotate": "ROTATE_SECONDS", "no_rotate": "NO_ROTATE", "language": "LANGUAGE", "ttl": "STATUS_TTL",
 }
 LANG_CHOICES = ("auto",) + LANGS
 
@@ -47,6 +48,7 @@ class Config:
     rotate: float = 30.0
     no_rotate: bool = False
     language: str = ""  # "" = not configured anywhere yet, else "auto" / "de" / "en"
+    ttl: float = 0.0  # the status expires on its own after this many seconds unless refreshed (cleans up after a PC shutdown); 0 = off
 
     @property
     def lang(self):
@@ -151,6 +153,14 @@ def load_config(args=None, environ=None):
         _log.warning(blog("ROTATE_SECONDS=%s ist zu klein, nehme %ss (Fluxer-Rate-Limits).",
                       "ROTATE_SECONDS=%s is too small, using %ss (Fluxer rate limits).", cfg.rotate, MIN_ROTATE))
         cfg.rotate = MIN_ROTATE
+    try:
+        cfg.ttl = float(cfg.ttl)
+    except ValueError:
+        raise Fatal(bi("STATUS_TTL muss eine Zahl sein (Sekunden, 0 = aus).", "STATUS_TTL must be a number (seconds, 0 = off)."))
+    if not cfg.ttl >= 0:  # also catches NaN
+        raise Fatal(bi("STATUS_TTL darf nicht negativ sein.", "STATUS_TTL must not be negative."))
+    if cfg.ttl:
+        cfg.ttl = min(MAX_TTL, max(MIN_TTL, cfg.ttl))
     u = urllib.parse.urlparse(cfg.api)
     if u.scheme != "https" and not (u.scheme == "http" and u.hostname in ("localhost", "127.0.0.1", "::1")):
         raise Fatal(bi(f"FLUXER_API muss https:// nutzen (Passwort/Token wuerden sonst im Klartext gesendet): {cfg.api}",

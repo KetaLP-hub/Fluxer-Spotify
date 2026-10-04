@@ -98,7 +98,8 @@ class SpotifyClient:
                                "Not logged in to Spotify yet. Run first: login"))
         self._token_request(grant_type="refresh_token", refresh_token=self.store.get("refresh"))
 
-    def login(self, open_browser=webbrowser.open, timeout=180, notify=print):
+    def login(self, open_browser=webbrowser.open, timeout=180, notify=print, cancel=None):
+        """Browser login (PKCE). `cancel` (optional callable) lets a window stop the wait early."""
         ver = secrets.token_urlsafe(64)
         state = secrets.token_urlsafe(16)
         chal = base64.urlsafe_b64encode(hashlib.sha256(ver.encode()).digest()).rstrip(b"=").decode()
@@ -128,9 +129,13 @@ class SpotifyClient:
         deadline = time.monotonic() + timeout
         try:
             while not got and time.monotonic() < deadline:
+                if cancel and cancel():
+                    break
                 srv.handle_request()
         finally:
             srv.server_close()
+        if cancel and cancel() and "code" not in got:
+            raise Fatal(bi("Abgebrochen.", "Cancelled."))
         if got.get("state") != state and "code" in got:
             raise Fatal(bi("Spotify-Antwort hatte einen falschen 'state' (abgebrochen).", "Spotify response had a wrong 'state' (aborted)."))
         if "code" not in got:

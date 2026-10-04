@@ -36,6 +36,8 @@ class FakeSpotify:
 
 
 class WizardCase(unittest.TestCase):
+    skip_github_step = True  # the optional GitHub question is tested on its own (GitHubStep)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -43,6 +45,10 @@ class WizardCase(unittest.TestCase):
         self.d = Path(self.tmp.name)
         for mod in (autostart, background):
             p = mock.patch.object(mod, "available", return_value=False)
+            p.start()
+            self.addCleanup(p.stop)
+        if self.skip_github_step:
+            p = mock.patch.object(wizard, "_github")
             p.start()
             self.addCleanup(p.stop)
 
@@ -70,6 +76,55 @@ class WizardCase(unittest.TestCase):
     def done_state(self, **extra):
         (self.d / "state.json").write_text(json.dumps({"client_id": CID, "refresh": "rr", "fluxer_token": TOKEN,
                                                       "fluxer_token_source": "login", **extra}))
+
+
+class GitHubStep(WizardCase):
+    skip_github_step = False
+
+    ME = (200, {"username": "sophie"})  # the Fluxer step re-checks the stored token on every start
+
+    def test_asked_once_and_declining_is_remembered(self):
+        self.done_state()
+        c = self.ctx(inputs=["n"], http=make_http(self.ME)[0])
+        out = self.run_wizard(c)
+        self.assertIn("GitHub", out)
+        self.assertTrue(self.state()["github_asked"])
+        self.assertNotIn("github_token", self.state())
+        self.run_wizard(self.ctx(inputs=[], http=make_http(self.ME)[0]))  # second start: no prompt at all (StopIteration would fail the test)
+
+    def test_yes_opens_the_prefilled_token_page_and_stores_the_token(self):
+        self.done_state()
+        http, t, _ = make_http(self.ME, (200, {"login": "sophie"}))
+        c = self.ctx(inputs=["j"], secrets=["github_pat_" + "x" * 30], http=http)
+        out = self.run_wizard(c)
+        url = self.opened[0]
+        self.assertTrue(url.startswith("https://github.com/settings/personal-access-tokens/new?"))
+        for part in ("pull_requests=read", "issues=read", "expires_in=365"):
+            self.assertIn(part, url)
+        self.assertNotIn("=write", url)  # read-only: never ask for write permissions
+        self.assertIn("sophie", out)
+        self.assertEqual(self.state()["github_user"], "sophie")
+        self.assertEqual(t.calls[1][2]["Authorization"], "Bearer github_pat_" + "x" * 30)
+
+    def test_wrong_token_does_not_block_the_program(self):
+        self.done_state()
+        http, _, _ = make_http(self.ME, (401, {"message": "Bad credentials"}))
+        c = self.ctx(inputs=["y"], secrets=["nope"], http=http)
+        out = self.run_wizard(c)  # must not raise
+        self.assertIn("github-login", out)
+        self.assertNotIn("github_token", self.state())
+        self.assertTrue(self.state()["github_asked"])
+
+    def test_already_connected_is_not_asked(self):
+        self.done_state(github_token="t", github_user="x")
+        self.run_wizard(self.ctx(inputs=[], http=make_http(self.ME)[0]))
+
+    def test_background_never_asks(self):
+        self.done_state()
+        c = self.ctx(inputs=[], http=make_http(self.ME)[0])
+        with contextlib.redirect_stdout(io.StringIO()):
+            wizard.setup(c, interactive=False)
+        self.assertNotIn("github_asked", self.state())
 
 
 class ClientId(WizardCase):
@@ -206,23 +261,18 @@ class Frozen(unittest.TestCase):
         self.assertFalse(getattr(sys, "frozen", False))
         self.assertTrue((config.default_data_dir() / "fluxer_spotify").is_dir())
 
-    def test_autostart_launcher_is_hidden_vbs_for_background_variant(self):
-        argv = [r"C:\Apps\Fluxer-Spotify.exe", "run", "--background", "--data-dir", r"C:\My Data"]
-        text = autostart.launcher_text(argv, r"C:\Apps")
-        self.assertIn(", 0, False", text)  # window style 0 = hidden
-        self.assertIn("--background", text)
-        self.assertIn(r'""C:\My Data""', text)  # quotes doubled for VBScript
+    def test_autostart_and_spawn_start_the_exe_hidden(self):
+        line = autostart.command_line(r"C:\My Data", frozen=True, executable=r"C:\Apps\Fluxer-Spotify.exe")
+        self.assertEqual(line, r'C:\Apps\Fluxer-Spotify.exe run --background --data-dir "C:\My Data"')
         cmd, _ = background.background_command(r"C:\d", frozen=True, executable=r"C:\Apps\Fluxer-Spotify.exe")
         self.assertEqual(cmd[:3], [r"C:\Apps\Fluxer-Spotify.exe", "run", "--background"])
 
-    def test_frozen_errors_wait_for_enter(self):
-        with mock.patch.object(sys, "frozen", True, create=True), mock.patch.object(cli, "main", return_value=1), \
-                mock.patch("builtins.input", return_value="") as inp:
-            self.assertEqual(cli.entry(), 1)
-        inp.assert_called_once()
-        with mock.patch.object(cli, "main", return_value=1), mock.patch("builtins.input") as inp:
-            cli.entry()  # source run: no pause
-        inp.assert_not_called()
+    def test_errors_never_wait_for_enter(self):
+        # The exe is a windowed program: there is no console window that could vanish, and a terminal must get its prompt back.
+        for frozen in (True, False):
+            with mock.patch.object(sys, "frozen", frozen, create=True), mock.patch.object(cli, "main", return_value=1), \
+                    mock.patch.object(sys, "argv", ["x", "status"]), mock.patch("builtins.input", side_effect=AssertionError("must not wait")):
+                self.assertEqual(cli.entry(), 1)
 
 
 if __name__ == "__main__":

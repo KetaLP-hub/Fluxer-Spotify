@@ -8,3 +8,8 @@ state.json.corrupt
 dist/
 build/
 *.spec
+
+# Sperrdateien der laufenden Instanz
+*.pid
+*.stop
+.needs-attention

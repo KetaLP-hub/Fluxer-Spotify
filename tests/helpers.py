@@ -5,6 +5,15 @@ import json
 from fluxer_spotify.http import Http, NetworkError, Response
 
 
+def have_tkinter():
+    """True if tkinter really imports (on slim Linux images the package exists but libtk is missing)."""
+    try:
+        import tkinter  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 class FakeTransport:
     """Pops scripted responses per call. Items: (status, body_dict_or_bytes[, headers]) or an Exception."""
 

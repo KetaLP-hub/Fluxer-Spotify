@@ -25,6 +25,11 @@ class Base(unittest.TestCase):
         self.d.mkdir()
         self.addCleanup(self.tmp.cleanup)
         self.addCleanup(self.close_logs)
+        # The fake pid files below name PIDs that belong to other programs on a real machine: treat them as ours
+        # (the identity check itself is covered in PidIdentity).
+        p = mock.patch.object(bg, "is_ours", return_value=True)
+        p.start()
+        self.addCleanup(p.stop)
 
     @staticmethod
     def close_logs():  # Windows cannot delete a temp dir holding an open log file

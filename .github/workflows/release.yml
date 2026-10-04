@@ -7,6 +7,10 @@ permissions:
 jobs:
   windows-exe:
     runs-on: windows-latest
+    env:
+      # Optional code signing: set both repository secrets and the exe is signed automatically (see SIGNING.md).
+      CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+      CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,14 +21,34 @@ jobs:
       - name: Build exe
         run: |
           pip install -r requirements-dev.txt
-          python -m PyInstaller --onefile --console --clean --noconfirm --name Fluxer-Spotify spotify_status.py
+          python -m PyInstaller --onefile --windowed --noupx --clean --noconfirm --name Fluxer-Spotify --icon assets/icon.ico --version-file version_info.txt --add-data "assets/icon.ico;assets" spotify_status.py
+      - name: Sign exe (only if a code-signing certificate is configured)
+        if: env.CERT_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_PFX_BASE64))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw 'signtool.exe not found on the runner' }
+          & $signtool.FullName sign /f $pfx /p $env:CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d "Fluxer Spotify" dist/Fluxer-Spotify.exe
+          if ($LASTEXITCODE -ne 0) { throw 'signtool sign failed' }
+          & $signtool.FullName verify /pa /v dist/Fluxer-Spotify.exe
+          if ($LASTEXITCODE -ne 0) { throw 'signature does not verify' }
+          Remove-Item $pfx -Force
       - name: Smoke test and SHA256
         shell: pwsh
         run: |
-          ./dist/Fluxer-Spotify.exe --version
+          # The exe is a windowed program: judge it by its exit code, not by output.
+          $p = Start-Process -FilePath ./dist/Fluxer-Spotify.exe -ArgumentList '--selftest' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "selftest failed (exit code $($p.ExitCode)): the GUI toolkit is missing from the bundle" }
+          $info = (Get-Item dist/Fluxer-Spotify.exe).VersionInfo
+          if ($info.ProductName -ne 'Fluxer Spotify') { throw 'version resource is missing from the exe' }
+          $sig = (Get-AuthenticodeSignature dist/Fluxer-Spotify.exe).Status
           $h = (Get-FileHash dist/Fluxer-Spotify.exe -Algorithm SHA256).Hash.ToLower()
           "$h  Fluxer-Spotify.exe" | Tee-Object -FilePath dist/Fluxer-Spotify.exe.sha256
           "SHA256: $h" >> $env:GITHUB_STEP_SUMMARY
+          "Signature: $sig" >> $env:GITHUB_STEP_SUMMARY
+          "SIGNATURE_STATUS=$sig" >> $env:GITHUB_ENV
       - name: Publish release
         shell: pwsh
         env:
@@ -36,5 +60,10 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload "$env:TAG" dist/Fluxer-Spotify.exe dist/Fluxer-Spotify.exe.sha256 --clobber
           } else {
-            gh release create "$env:TAG" dist/Fluxer-Spotify.exe dist/Fluxer-Spotify.exe.sha256 --title "$env:TAG" --generate-notes --notes "Unsigned exe: Windows SmartScreen / antivirus may warn. Verify with the .sha256 file. Ungesignierte exe: SmartScreen/Virenscanner koennen warnen."
+            if ($env:SIGNATURE_STATUS -eq 'Valid') {
+              $note = 'Signed exe. Verify with the .sha256 file. Signierte exe.'
+            } else {
+              $note = 'Unsigned exe: Windows SmartScreen / antivirus may warn. Verify with the .sha256 file (see SIGNING.md). Ungesignierte exe: SmartScreen/Virenscanner koennen warnen.'
+            }
+            gh release create "$env:TAG" dist/Fluxer-Spotify.exe dist/Fluxer-Spotify.exe.sha256 --title "$env:TAG" --generate-notes --notes "$note"
           }

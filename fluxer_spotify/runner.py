@@ -28,6 +28,7 @@ class Runner:
         self.last_key, self.last_push, self.failures = None, 0.0, 0
         self.lines = Lines(cfg, spotify, clock, github)
         self.sent, self.hold_until, self.status_failures = UNSET, 0.0, 0  # last status Fluxer accepted; PATCH pause after errors
+        self.sent_at = 0.0  # when it was accepted (an expiring status must be renewed before it runs out)
         self.rot_id, self.rot_start = None, 0.0  # (track, playing) the rotation belongs to, and when it began
 
     def wanted_status(self, snap, now=None):
@@ -62,7 +63,7 @@ class Runner:
         now = self.clock()
         if self.fluxer and now >= self.hold_until:
             want = self.wanted_status(snap, now)
-            if want is not KEEP and want != self.sent:  # PATCH only when the text really changes
+            if want is not KEEP and (want != self.sent or self._renew_due(want, now)):  # PATCH when the text changes (or must be renewed)
                 self._set_status(want, now)
         if self.webhook and (changed or (snap.playing and self.clock() - self.last_push > 30)):
             self.webhook.push(snap.embed)
@@ -77,21 +78,44 @@ class Runner:
             return "idle"
         return ("playing " if snap.playing else "paused ") + status_text(snap.item, "{title} – {artist}")
 
+    def _ttl(self):
+        return getattr(self.cfg, "ttl", 0) or 0
+
+    def _renew_due(self, want, now):
+        """An expiring status is sent again after a third of its lifetime, so it never lapses while the program runs."""
+        ttl = self._ttl()
+        return bool(ttl) and want is not None and now - self.sent_at >= ttl / 3
+
     def _set_status(self, text, now):
+        ttl = self._ttl()
         try:
-            self.fluxer.set_status(text)
-            self.sent, self.status_failures = text, 0
+            if ttl and text:
+                self.fluxer.set_status(text, ttl=ttl)
+            else:
+                self.fluxer.set_status(text)
+            self.sent, self.sent_at, self.status_failures = text, now, 0
             log.debug("Status: %s", text)
-        except (HttpError, NetworkError) as e:  # a failing status call must not stop polling or the webhook
-            self.status_failures += 1
-            wait = retry_wait(e, self.status_failures)
-            self.hold_until = now + wait
-            log.warning(blog("Status konnte nicht gesetzt werden: %s (neuer Versuch in %.0f s)", "Could not set status: %s (again in %.0fs)", e, wait))
+        except HttpError as e:
+            if ttl and text and e.status == 400:  # Fluxer did not accept expires_at: carry on without expiry instead of failing
+                self.cfg.ttl = 0
+                log.warning(blog("Fluxer lehnt ein Ablaufdatum fuer den Status ab (HTTP 400); STATUS_TTL wird ignoriert.",
+                                 "Fluxer rejected a status expiry (HTTP 400); STATUS_TTL is ignored."))
+                return self._set_status(text, now)
+            self._status_failed(e, now)
+        except NetworkError as e:
+            self._status_failed(e, now)
         except AuthError as e:
             if not self.webhook:
                 raise
             log.error("%s\n-> " + bi("Profil-Status deaktiviert, Webhook laeuft weiter.", "Profile status disabled, webhook keeps running.", " / "), e)
             self.fluxer = None
+
+    def _status_failed(self, e, now):
+        """A failing status call must not stop polling or the webhook: pause PATCHing for a while instead."""
+        self.status_failures += 1
+        wait = retry_wait(e, self.status_failures)
+        self.hold_until = now + wait
+        log.warning(blog("Status konnte nicht gesetzt werden: %s (neuer Versuch in %.0f s)", "Could not set status: %s (again in %.0fs)", e, wait))
 
     def run(self, sleep=time.sleep):
         """Loop until interrupted. Transient errors back off exponentially (10s .. 120s)."""

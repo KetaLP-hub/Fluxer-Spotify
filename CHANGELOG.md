@@ -4,8 +4,32 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-04
+
+### Added
+- **Launcher window** (tkinter, standard library): double-click the exe and click through Spotify, Fluxer and GitHub, then *Start*. Shows what is running, **stops** and restarts the background program, switches *Start with Windows*, chooses the status lines (tab "Display"), checks the connections live, shows the log and uninstalls. `python spotify_status.py gui` opens it from source. All logic lives in `launcher.py` (no GUI code, tested without a display); `ui.py` is only the skin.
+- **GitHub built into the setup**: the console wizard asks once (step 4, optional), the launcher has it as a step, and the token page now opens **pre-filled** with name, 365-day lifetime and the two read-only permissions (`pull_requests`, `issues`). `github.connect()`/`disconnect()` are shared by CLI and launcher.
+- **`STATUS_TTL` / `--ttl`**: Fluxer clears the status by itself (`expires_at`) unless the program renews it every third of that time. Cleans up after a PC shutdown. If Fluxer answers HTTP 400 the option switches itself off.
+- **`--selftest`** (used by the release workflow to check the packaged exe) and the `gui` command.
+- First start from the launcher switches on "also show when nothing plays", "also show while paused" and "status expires by itself" once (written to `.env`, never overwriting your own values). `settings.py` edits `.env` without touching comments or other keys and validates with the real config loader first.
+- Exe: icon (`assets/icon.ico`, regenerate with `assets/make_icon.py`), version resource (`version_info.txt`), built as a **windowed** program without UPX. `SIGNING.md` explains SmartScreen honestly; the release workflow signs automatically when the secrets `WINDOWS_CERT_PFX_BASE64` and `WINDOWS_CERT_PASSWORD` exist.
+- `FLUXER_SPOTIFY_NO_POPUP=1` suppresses the one-time Windows message box (the launcher shows the same hint).
+
+### Changed
+- **Autostart** is now a value in the user's `Run` registry key instead of a hidden VBScript in the Startup folder (script launchers are what antivirus heuristics flag; Windows is retiring VBScript). The old file is removed when the new entry is installed; the launcher offers to update an old entry.
+- The exe is a windowed program: double-click opens the launcher; with arguments it prints into the terminal it was started from.
+- Background mode **keeps running** through unexpected errors (logged, retried with 15 s up to 5 min) instead of exiting; only problems that need the user stop it.
+- The one-time Windows hint uses the information icon instead of the warning icon.
+- Windows installs built before this version keep their data folder and logins (same `%APPDATA%\spotify-fluxer`).
+
+### Security
+- HTTP redirects are only followed within the same scheme and host (urllib would forward the `Authorization` header to another server); any other 3xx is an error.
+- `stop`/the instance lock check that a PID still belongs to this program before treating it as running or terminating it (PIDs are reused). New result `unresponsive`: nothing is terminated when the process cannot be identified.
+- The launcher never keeps the Fluxer password in its window longer than the login needs and registers password and tokens for log redaction.
+
 ### Fixed
 - Release workflow: if a release for the tag already exists (e.g. created by hand in the GitHub UI), the exe and the `.sha256` are attached to it instead of failing at `gh release create`.
+- Tests no longer touch the real desktop (browser tabs, Explorer, windows): `tests/__init__.py` blocks it. Stale `*.pid` files are git-ignored.
 
 ## [2.2.0] - 2026-10-02
 

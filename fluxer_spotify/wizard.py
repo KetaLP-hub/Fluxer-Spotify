@@ -7,6 +7,7 @@ import re
 
 from . import autostart, background
 from .errors import LANGS, AuthError, Fatal, LoginError, bi, detect_lang, set_lang
+from .http import HttpError, NetworkError
 from .store import FLUXER_KEYS, SPOTIFY_KEYS
 
 DASHBOARD = "https://developer.spotify.com/dashboard"
@@ -31,6 +32,8 @@ def setup(ctx, tries=5, interactive=True):
             ctx.store.clear(("client_id",))
         raise
     _fluxer(ctx, tries)
+    if interactive:
+        _github(ctx)
     if interactive and not ctx.cfg.no_rotate and not ctx.store.get("rotation_noted"):
         n = f"{ctx.cfg.rotate:g}"
         print(bi(f"Tipp: Der Status wechselt alle {n} s zwischen Titel, Playlist, Top-Artist und Hoerzeit; aendern mit --lines / --rotate / --no-rotate (siehe README).",
@@ -128,6 +131,25 @@ def _fluxer(ctx, tries):
             ctx.fluxer_token()
             return
     raise Fatal(bi("Fluxer-Login nicht moeglich.", "Fluxer login not possible."))
+
+
+def _github(ctx):
+    """Step 4 (optional, asked once): GitHub lines in the status. A failed attempt never blocks the program."""
+    if ctx.store.get("github_token") or ctx.store.get("github_asked"):
+        return
+    print(bi("\nSchritt 4 (optional): GitHub verbinden. Dann zeigt der Status auch heutige Beitraege, offene Pull Requests, deine Serie usw.\n"
+             "  Das Programm braucht nur LESE-Rechte (ein Fine-grained Token, die Seite dafuer oeffnet sich mit vorausgefuellten Rechten).",
+             "\nStep 4 (optional): connect GitHub. The status then also shows today's contributions, open pull requests, your streak, etc.\n"
+             "  The program only needs READ access (a fine-grained token; the page for it opens with the permissions pre-filled)."))
+    ans = _ask(ctx, bi("GitHub jetzt verbinden? (j/n): ", "Connect GitHub now? (y/n): ")).strip().lower()
+    ctx.store.update(github_asked=True)  # not asked again; later: github-login
+    if ans not in YES:
+        return
+    try:
+        ctx.github_login()
+    except (Fatal, HttpError, NetworkError) as e:
+        print(bi(f"GitHub wurde nicht verbunden ({e}). Du kannst es spaeter mit 'github-login' nachholen.",
+                 f"GitHub was not connected ({e}). You can retry later with 'github-login'."))
 
 
 def notice():

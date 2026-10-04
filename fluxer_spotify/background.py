@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from .errors import Fatal, bi
 
@@ -57,6 +57,27 @@ def hide_console(frozen=None):
     return True
 
 
+def attach_parent_console():
+    """Windowed exe started from cmd/PowerShell with arguments: print into that terminal.
+
+    A windowed exe has no console and sys.stdout/stderr/stdin are None. Attaching to the parent's console makes
+    `Fluxer-Spotify.exe stop`, `status`, `logs` and `--version` show their output. Streams that were redirected
+    (> file, | more) are left alone. Returns True when attached.
+    """
+    if os.name != "nt":
+        return False
+    import ctypes
+    if not ctypes.windll.kernel32.AttachConsole(0xFFFFFFFF):  # ATTACH_PARENT_PROCESS
+        return False
+    for name, mode, device in (("stdout", "w", "CONOUT$"), ("stderr", "w", "CONOUT$"), ("stdin", "r", "CONIN$")):
+        if getattr(sys, name) is None:
+            try:
+                setattr(sys, name, open(device, mode, encoding="utf-8", errors="replace"))
+            except OSError:
+                pass
+    return True
+
+
 def fix_streams():
     """Without a console sys.stdout/stderr are None (pythonw, CREATE_NO_WINDOW): give print() a harmless sink."""
     for name in ("stdout", "stderr"):
@@ -65,19 +86,34 @@ def fix_streams():
 
 
 def notify_once(data_dir, text, title="Fluxer Spotify", messagebox=None):
-    """One Windows MessageBox per problem; the marker is removed again once the loop runs fine."""
+    """One Windows MessageBox per problem; the marker is removed again once the loop runs fine.
+
+    The marker holds the message text, so the launcher window can show the same hint without a pop-up.
+    """
     marker = Path(data_dir) / ATTN_NAME
-    if marker.exists() or (messagebox is None and os.name != "nt"):
+    no_popup = bool(os.environ.get("FLUXER_SPOTIFY_NO_POPUP"))  # automation / tests: the launcher window shows the same hint
+    if marker.exists() or (messagebox is None and not no_popup and os.name != "nt"):
         return False
     try:
-        marker.write_text("1")
+        marker.write_text(text, encoding="utf-8")
     except OSError:
         pass
     if messagebox is None:
+        if no_popup:
+            return True
         import ctypes
-        messagebox = lambda t, c: ctypes.windll.user32.MessageBoxW(0, c, t, 0x30 | 0x40000)  # warning icon, topmost
+        messagebox = lambda t, c: ctypes.windll.user32.MessageBoxW(0, c, t, 0x40 | 0x40000)  # information icon, topmost
     messagebox(title, text)
     return True
+
+
+def read_attention(data_dir):
+    """The text of the pending 'please fix me' hint, or None."""
+    try:
+        text = (Path(data_dir) / ATTN_NAME).read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    return text or "?"
 
 
 def clear_attention(data_dir):
@@ -111,6 +147,47 @@ def pid_alive(pid):
     return True
 
 
+def process_image(pid):
+    """What is running under this PID? Windows: the exe path; Linux: the command line. None = cannot tell."""
+    if pid <= 0:
+        return None
+    if os.name == "nt":
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return None
+        try:
+            buf = ctypes.create_unicode_buffer(32768)
+            size = ctypes.c_uint(len(buf))
+            if not k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                return None
+            return buf.value
+        finally:
+            k32.CloseHandle(h)
+    try:
+        return Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+    except OSError:
+        return None
+
+
+def is_ours(pid, image=None):
+    """True: this PID is (still) this program. False: some other program has that PID now, so a pid file naming it is stale.
+    None: cannot tell (no permission, unsupported OS).
+
+    PIDs are reused quickly. Without this check a stale pid file could make us believe we are already running, and
+    `stop` could terminate an unrelated process after its 20 second wait.
+    """
+    img = (image or process_image)(pid)
+    if not img:
+        return None
+    if os.name == "nt":
+        name = PureWindowsPath(img).name.lower()
+        own = {PROCESS_NAME.lower(), PureWindowsPath(sys.executable).name.lower()}
+        return name in own or name in ("python.exe", "pythonw.exe", "py.exe")  # the latter: running from source
+    return "fluxer_spotify" in img or "spotify_status" in img
+
+
 def read_pid(data_dir):
     try:
         return int((Path(data_dir) / PID_NAME).read_text().strip())
@@ -125,7 +202,7 @@ def running_pid(data_dir):
     """
     path = Path(data_dir) / PID_NAME
     pid = read_pid(data_dir)
-    if pid == os.getpid() or (pid is not None and pid_alive(pid)):
+    if pid == os.getpid() or (pid is not None and pid_alive(pid) and is_ours(pid) is not False):
         return pid
     try:
         if pid is not None or path.stat().st_size:  # dead pid or garbage; an empty file is a lock being written right now
@@ -188,7 +265,8 @@ def clear_stop(data_dir):
 def stop_instance(data_dir, wait=20, sleep=time.sleep, kill=None):
     """Ask the running instance to shut down via its normal path (it clears the Fluxer status).
 
-    Returns "none" (nothing running), "clean" (exited by itself) or "killed" (had to be terminated; status NOT cleared).
+    Returns "none" (nothing running), "clean" (exited by itself), "killed" (had to be terminated; status NOT cleared) or
+    "unresponsive" (did not react and we cannot be sure the PID is still ours, so nothing was terminated).
     """
     pid = running_pid(data_dir)
     if pid is None:
@@ -199,6 +277,9 @@ def stop_instance(data_dir, wait=20, sleep=time.sleep, kill=None):
             break
         sleep(0.5)
     else:
+        if is_ours(pid) is not True:
+            clear_stop(data_dir)
+            return "unresponsive"
         (kill or _kill)(pid)
         clear_stop(data_dir)
         try:

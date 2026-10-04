@@ -8,19 +8,23 @@ Windows-Programm zum Doppelklicken, nichts zu installieren. Der Quellcode brauch
 
 > **Hinweis:** Fluxer hat keine native Spotify-Integration. Dieses Tool setzt nur den **Text-Status**, mehr nicht.
 
-## Einrichtung (Doppelklick, den Rest erledigt das Programm)
+## Einrichtung (einfach doppelklicken)
 
-1. **`Fluxer-Spotify.exe` herunterladen** unter [Releases](https://github.com/KetaLP-hub/Fluxer-Spotify/releases) und doppelklicken.
-2. **Fragen beantworten.** Beim ersten Start führt dich das Programm Schritt für Schritt durch alles, was noch fehlt, und überspringt, was schon erledigt ist:
-   1. **Spotify Client ID:** Das Programm öffnet https://developer.spotify.com/dashboard. Dort "Create app" wählen, als Redirect URI genau `http://127.0.0.1:8888/callback` eintragen, die **Client ID** kopieren und im Fenster einfügen. Sie wird gespeichert.
-   2. **Spotify-Login:** Der Browser öffnet sich, "Zustimmen" klicken.
-   3. **Fluxer-Login:** E-Mail und Passwort (und 2FA-Code, falls aktiv). Geht das nicht (z. B. Passkey-Account), bietet das Programm an, stattdessen einen Token einzufügen.
-   4. Zum Schluss sagt es **klar, dass es dauerhaft im Hintergrund weiterlaufen kann und wie man es beendet bzw. deinstalliert**, und fragt einmal, ob es **mit Windows starten** soll (j/n, startet dann unsichtbar) und ob es **jetzt das Fenster verstecken** und im Hintergrund weiterlaufen soll (j/n).
-3. Danach läuft der Status. Im Vordergrund: Fenster offen lassen und mit `Strg+C` beenden, der Status wird dabei gelöscht.
+1. **`Fluxer-Spotify.exe` herunterladen** unter [Releases](https://github.com/KetaLP-hub/Fluxer-Spotify/releases), an einen festen Ort legen (zum Beispiel `C:\Programme\Fluxer-Spotify\`) und doppelklicken. Es öffnet sich ein Fenster: **der Launcher**. Ein Konsolenfenster gibt es nicht.
+2. **Die Schritte durchklicken.** Der große Knopf zeigt immer, was als Nächstes dran ist:
+   1. **Spotify verbinden.** Einmalig brauchst du eine kostenlose Spotify-App (jede Person braucht ihre eigene, siehe unten). Der Launcher öffnet das Dashboard, zeigt die genaue Redirect-URI `http://127.0.0.1:8888/callback` mit einem *Kopieren*-Knopf und fragt nach der Client ID. Danach öffnet sich dein Browser: auf „Zustimmen“ klicken.
+   2. **Fluxer verbinden.** E-Mail und Passwort (und der 2FA-Code, falls du einen nutzt). Konto mit Passkey/SSO: „Token einfügen …“.
+   3. **GitHub verbinden** (optional, empfohlen). „Token-Seite öffnen“ öffnet GitHub mit Name, Laufzeit und den beiden **reinen Lese-Rechten** schon ausgefüllt. Auf „Generate token“ klicken, kopieren, im Launcher einfügen. „GitHub überspringen“ geht auch.
+   4. **Starten.** Ein Klick startet das Programm unsichtbar im Hintergrund. Danach bietet der Launcher **„Mit Windows starten“** an – so läuft es rund um die Uhr, auch nach einem Neustart, bis du es stoppst.
+3. **Fertig.** Fenster schließen; das Programm läuft weiter. Doppelklicke die Exe später wieder, um den Zustand zu sehen, es zu **stoppen**, die Anzeige zu ändern (Tab „Anzeige“), etwas neu zu verbinden, die Verbindungen zu prüfen, das Log zu lesen oder zu deinstallieren.
 
-Beim nächsten Start fragt das Programm nur noch nach, wenn ein Login abgelaufen ist. Alle Daten liegen in `%APPDATA%\spotify-fluxer` (u. a. `state.json`, `.env` optional). Bei einem Fehler bleibt das Fenster offen ("Drücke Enter"), damit du die Meldung lesen kannst.
+Was der Status zeigt, sobald alles verbunden ist: aktueller Titel, Playlist, Top-Artist, Hörzeit heute und die GitHub-Zeilen (letzter Push, Beiträge heute, offene Pull Requests, angefragte Reviews, zugewiesene Issues, Serie). Im Tab „Anzeige“ schaltest du jede Zeile an oder aus und nimmst auch Sterne und Follower dazu. Der erste Start aus dem Launcher schaltet einmalig **„Auch zeigen, wenn nichts spielt“**, **„Auch bei Pause zeigen“** und **„Status läuft von selbst ab“** ein (alles änderbar).
 
-**Jede Person braucht ihre eigene (kostenlose) Spotify-App.** Das ist von Spotify so gewollt: Eine App im Entwicklermodus darf nur 25 Nutzer freischalten, deshalb kann es keine gemeinsame App für alle geben.
+**Update von 2.2 oder älter:** Deine Anmeldungen bleiben erhalten (derselbe Datenordner). Starte einfach die neue Exe. Der Launcher erkennt einen alten Autostart-Eintrag und bietet „Autostart auf diese Exe aktualisieren“ an.
+
+**Jede Person braucht ihre eigene (kostenlose) Spotify-App.** Das ist von Spotify so gewollt: Eine App im Entwicklungsmodus darf nur 25 Nutzer zulassen, eine gemeinsame App für alle geht daher nicht.
+
+Lieber im Terminal (oder aus dem Quellcode)? `python spotify_status.py` startet weiterhin die klassische Frage-und-Antwort-Einrichtung in der Konsole, `python spotify_status.py gui` öffnet den Launcher. Alle Befehle unten funktionieren auch mit der Exe (`Fluxer-Spotify.exe stop`, `status`, `logs` … schreiben in das Terminal, aus dem du sie startest).
 
 ### Hintergrundbetrieb (ohne sichtbares Fenster)
 
@@ -31,6 +35,11 @@ Beim nächsten Start fragt das Programm nur noch nach, wenn ein Login abgelaufen
 - **Komplett entfernen:** `Fluxer-Spotify.exe uninstall` (nach Rückfrage: stoppt das Programm, entfernt den Autostart, meldet ab und löscht `state.json`, `.env` und Logs). Die exe selbst löschst du danach von Hand.
 - **Ehrlicher Hinweis:** Ein unsichtbar laufendes Programm ist nur dann für die Person transparent, wenn sie es weiß. Deshalb sagt der Einrichtungs-Assistent ausdrücklich, dass das Programm im Hintergrund weiterläuft und wie man es beendet und deinstalliert. Installiere es nicht auf Rechnern anderer Personen ohne deren Wissen.
 - Das Verstecken betrifft nur das eigene Fenster der exe; startest du es aus einer geöffneten Eingabeaufforderung, bleibt diese sichtbar (nur das Log geht in die Datei).
+- **Launcher:** Der *Starten/Stoppen*-Knopf und der Schalter *Mit Windows starten* tun dasselbe wie `run --background`, `stop` und `install-autostart`.
+- **Der Autostart** ist ein einzelner Wert im *Run*-Schlüssel deines Benutzers (`HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`), sichtbar und schaltbar im Task-Manager unter „Autostart“. Ältere Versionen legten eine versteckte VBScript-Datei in den Startup-Ordner; sie wird beim Einrichten des neuen Eintrags automatisch entfernt. (Versteckte Skript-Starter sind genau das, was Virenscanner-Heuristiken melden, und Windows schafft VBScript ab.)
+- **Läuft weiter:** Im Hintergrundbetrieb beendet ein unerwarteter Fehler das Programm nicht; er wird protokolliert und mit wachsender Pause (15 s bis 5 min) erneut versucht. Nur was dich braucht (eine Anmeldung, die nicht mehr funktioniert) hält es an – der Launcher zeigt dann, was zu tun ist.
+- **Räumt selbst auf:** `STATUS_TTL` (im Launcher „Status läuft von selbst ab“) lässt Fluxer den Status von allein löschen, wenn das Programm es nicht kann, z. B. weil der PC ausgeschaltet wurde. Das Programm erneuert ihn nach je einem Drittel der Zeit. Voraussetzung: Fluxer akzeptiert `expires_at`; antwortet es mit HTTP 400, schaltet sich die Option selbst ab.
+- `FLUXER_SPOTIFY_NO_POPUP=1` unterdrückt das einmalige Windows-Hinweisfenster (Automatisierung); der Launcher zeigt denselben Hinweis in seinem Fenster.
 
 ### Android (Termux): läuft auch bei ausgeschaltetem PC
 
@@ -55,9 +64,15 @@ Gut zu wissen:
 
 ### Windows warnt vor der Datei (SmartScreen / Virenscanner)
 
-Die exe ist **nicht code-signiert** (ein Zertifikat kostet Geld). Windows SmartScreen zeigt daher "Der Computer wurde durch Windows geschützt" ("Weitere Informationen" -> "Trotzdem ausführen"), und manche Virenscanner schlagen bei PyInstaller-Programmen fälschlich an (Fehlalarm). Prüfe die Datei mit der `.sha256` aus dem Release (`certutil -hashfile Fluxer-Spotify.exe SHA256`) oder baue sie selbst aus dem Quellcode (siehe unten). Wer der exe nicht traut, startet einfach `python spotify_status.py`.
+**Kurz:** Ein heruntergeladenes Programm ohne Code-Signatur löst immer SmartScreen aus („Der PC wurde durch Windows geschützt“ -> „Weitere Informationen“ -> „Trotzdem ausführen“). Das kann kein Programm selbst abschalten; nur ein Zertifikat einer vertrauenswürdigen Stelle (oder aufgebauter Ruf) hilft. In **[SIGNING.md](SIGNING.md)** steht, wie du eins bekommst (für Open-Source-Projekte kostenlos über die SignPath Foundation) und wie der Release-Workflow die Exe automatisch signiert, sobald die zwei Secrets gesetzt sind.
 
-Kein DevTools, kein Token-Kopieren, keine Umgebungsvariablen.
+Was das Projekt tut, damit es möglichst leise bleibt:
+- **Kein Packer** (`--noupx`), saubere Versionsinfo und Icon, `asInvoker` (fragt nie nach Admin-Rechten).
+- **Keine versteckten Skript-Starter**: Der Autostart ist ein normaler Run-Key-Eintrag, kein VBScript.
+- **Fenster-Programm** statt einer Konsole, die beim Anmelden aufblitzt.
+- Zu jedem Release eine `.sha256` und ein Rauchtest im Release-Workflow.
+
+Ohne Zertifikat kannst du sie trotzdem sicher starten: Hash prüfen (`certutil -hashfile Fluxer-Spotify.exe SHA256`), die Exe selbst bauen (eine selbst gebaute Datei hat keine Markierung „aus dem Internet“, SmartScreen fragt dann nicht) oder einfach `python spotify_status.py` benutzen. Setzt dein Virenscanner die Exe in Quarantäne (Fehlalarm bei einem PyInstaller-Programm), stelle sie wieder her und melde sie dem Hersteller als Fehlalarm.
 
 ### Was passiert mit deinem Passwort?
 
@@ -116,7 +131,7 @@ Während ein Titel läuft, wechselt der Status reihum zwischen diesen Zeilen:
 
 ### GitHub-Statuszeilen (optional)
 
-`python spotify_status.py github-login` (bzw. `Fluxer-Spotify.exe github-login`) verbindet GitHub mit einem **Nur-Lese-Token** (die Eingabe ist unsichtbar; unter Windows wird der Token wie die anderen verschlüsselt gespeichert). Erstelle auf <https://github.com/settings/personal-access-tokens/new> einen *Fine-grained token*: „Public repositories“ reicht für öffentliche Daten; für Zähler aus privaten Repos (offene PRs, Reviews, Issues) wähle „All repositories“ mit **Pull requests: Read** und **Issues: Read**. Gib ihm nie Schreibrechte.
+**Im Launcher:** Übersicht > GitHub > Verbinden (öffnet die Token-Seite vorausgefüllt). **Auf der Kommandozeile:** `python spotify_status.py github-login` (bzw. `Fluxer-Spotify.exe github-login`) verbindet GitHub mit einem **Nur-Lese-Token** (die Eingabe ist unsichtbar; unter Windows wird der Token wie die anderen verschlüsselt gespeichert). Erstelle auf <https://github.com/settings/personal-access-tokens/new> einen *Fine-grained token*: „Public repositories“ reicht für öffentliche Daten; für Zähler aus privaten Repos (offene PRs, Reviews, Issues) wähle „All repositories“ mit **Pull requests: Read** und **Issues: Read**. Gib ihm nie Schreibrechte.
 
 Nach dem Verbinden laufen diese Zeilen in der Rotation mit (außer du hast `STATUS_LINES` selbst gesetzt, dann ergänzt du die Namen unten von Hand). Spotify bleibt Pflicht, GitHub ist eine zusätzliche Quelle. Mit `ON_IDLE=lines` bleiben sie auch ohne Musik sichtbar.
 
@@ -151,6 +166,7 @@ LANGUAGE=de
 `doctor` zeigt die aktiven Zeilen und das Intervall an.
 - `--webhook` / `FLUXER_WEBHOOK`: optionale Karte im Channel.
 - `--interval` / `POLL_INTERVAL`: Abfrage in Sekunden (mindestens 2).
+- `--ttl` / `STATUS_TTL`: Sekunden, nach denen Fluxer den Status von selbst löscht, wenn das Programm ihn nicht erneuert (Standard `0` = aus, Minimum 120, Maximum 86400). Sinnvoll, wenn der PC ausgehen kann.
 
 ## Probleme?
 
@@ -174,13 +190,17 @@ Zuerst: `Fluxer-Spotify.exe status` (bzw. `python spotify_status.py status`). Ab
 ## Für Entwickler: Quellcode und exe bauen
 
 ```
-python spotify_status.py                     # Start aus dem Quellcode (Daten im Projektordner)
-python -m unittest discover -s tests -t .    # Tests (nur Standardbibliothek)
+python spotify_status.py                     # Start aus dem Quellcode (klassische Konsolen-Einrichtung; Daten im Projektordner)
+python spotify_status.py gui                 # das Launcher-Fenster aus dem Quellcode
+python -m unittest discover -s tests -t .    # Tests (nur Standardbibliothek; Fenster-Tests brauchen tkinter und ein Display, sonst werden sie übersprungen)
 pip install -r requirements-dev.txt          # PyInstaller, nur zum Bauen
 build_exe.bat                                # erzeugt dist\Fluxer-Spotify.exe
+python assets/make_icon.py                   # erzeugt assets/icon.ico neu (braucht Pillow, nur wenn du das Icon änderst)
 ```
 
-Die Laufzeit nutzt ausschließlich die Standardbibliothek; PyInstaller wird nur zum Bauen gebraucht. Ein Tag `v*` (z. B. `git tag v2.1.0 && git push --tags`) startet `.github/workflows/release.yml`: Tests, exe bauen, Release mit exe und SHA256 anlegen. Als exe liegen die Daten in `%APPDATA%\spotify-fluxer`, aus dem Quellcode im Projektordner (überschreibbar mit `--data-dir` oder `FLUXER_SPOTIFY_HOME`).
+Die Laufzeit nutzt nur die Standardbibliothek (der Launcher nutzt `tkinter`, das zu Python gehört); PyInstaller wird nur zum Bauen gebraucht. Die Exe ist ein **Fenster-Programm** (`--windowed`): Doppelklick öffnet den Launcher, mit Argumenten gestartet schreibt sie in das Terminal, aus dem sie kam. Ein Tag `v*` (z. B. `git tag v2.3.0 && git push --tags`) startet `.github/workflows/release.yml`: Tests, Bau, optionales Signieren ([SIGNING.md](SIGNING.md)), Rauchtest der gebauten Exe (`--selftest`: ist Tcl/Tk drin?), SHA256, Release. Als Exe liegen die Daten in `%APPDATA%\spotify-fluxer`, aus dem Quellcode im Projektordner (überschreibbar mit `--data-dir` oder `FLUXER_SPOTIFY_HOME`).
+
+Aufbau: `fluxer_spotify/launcher.py` enthält alles, was das Fenster zeigt und tut (kein GUI-Code, vollständig getestet); `ui.py` ist nur die tkinter-Oberfläche darüber. Tests öffnen nie einen echten Browser und zeigen keine Fenster (`tests/__init__.py` verhindert das).
 
 ## Warnung (Nutzungsbedingungen)
 
@@ -190,6 +210,11 @@ Das Automatisieren eines **persönlichen Accounts** (Self-Bot) **kann gegen die 
 
 - `state.json` und `.env` enthalten Geheimnisse (Tokens, Webhook-URL). Sie stehen in `.gitignore`, **nie committen oder teilen**. Wer den Session-Token hat, hat vollen Zugriff auf deinen Fluxer-Account, bis die Sitzung beendet wird (`logout` oder Fluxer-Einstellungen). Unter Windows sind die Tokens in `state.json` verschlüsselt, die Webhook-URL und `.env` aber nicht.
 - Das Tool spricht nur mit `api.fluxer.app`, `accounts.spotify.com`, `api.spotify.com` und deinem Webhook. `FLUXER_API` muss `https://` nutzen (Ausnahme: localhost).
+- **Weiterleitungen auf andere Hosts werden nicht verfolgt.** Python behält bei einer Weiterleitung den `Authorization`-Header; ein anderer Server bekäme so deinen Token. Nur Weiterleitungen innerhalb desselben Hosts werden verfolgt, jede andere 3xx-Antwort ist ein Fehler.
+- **`stop` beendet nie ein Programm, das es nicht zuordnen kann.** PIDs werden wiederverwendet; bevor eine hängende Instanz beendet wird, prüft das Programm, dass die PID noch zu ihm gehört (sonst: `unresponsive`). Eine veraltete PID-Datei, die ein anderes Programm nennt, blockiert keinen Start.
+- **Keine versteckten Skript-Starter, keine Admin-Rechte, kein offener Port außer dem kurzen Loopback-Login** (`127.0.0.1:8888`, nur beim Verbinden von Spotify). Der GitHub-Token braucht nur die zwei Lese-Rechte (`pull_requests`, `issues`); die vorausgefüllte Token-Seite fragt nach nichts anderem.
+- Der Launcher speichert das Fluxer-Passwort nie (er leert das Feld, sobald die Anmeldung läuft) und meldet Passwort und Tokens für die Log-Schwärzung an.
+- Releases sind prüfbar: SHA256, Versionsinfo, optional Authenticode-Signatur. Es gibt kein Auto-Update, das Programm lädt also nie Code nach und führt ihn aus.
 - Auf Windows setzt das Tool keine NTFS-Rechte; die Datei liegt in deinem Benutzerordner. Auf einem geteilten Rechner den Ordner entsprechend schützen.
 - Sicherheitslücke gefunden? Bitte einen privaten Hinweis an die Maintainer statt eines öffentlichen Issues.
 
